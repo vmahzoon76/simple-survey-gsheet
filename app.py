@@ -48,8 +48,12 @@ if submitted:
 
 st.divider()
 
-# --- Admin view (optional) ---
-with st.expander("🔐 Admin: view responses"):
+# --- Admin view (password protected) ---
+st.markdown("---")
+admin_access = st.text_input("Admin access code (for internal use only):", type="password")
+
+if admin_access == "mysecret123":  # <-- change this to your own password
+    st.success("Admin access granted ✅")
     try:
         data = sheet.get_all_records()
         if data:
@@ -59,3 +63,5 @@ with st.expander("🔐 Admin: view responses"):
             st.info("No responses yet.")
     except Exception as e:
         st.error(f"Could not read the sheet: {e}")
+elif admin_access != "":
+    st.error("Access denied ❌")
