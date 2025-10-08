@@ -1,8 +1,21 @@
-import os, json
+import os, json, time
 from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+# Optional Google Sheets support
+USE_GSHEETS = True
+try:
+    import gspread
+    from oauth2client.service_account import ServiceAccountCredentials
+    from gspread.exceptions import APIError, SpreadsheetNotFound, WorksheetNotFound
+except Exception:
+    USE_GSHEETS = False
+
+st.set_page_config(page_title="AKI Expert Review — Sheets (no HTML)", layout="wide")
+st.title("AKI Expert Review — Sheets-backed (no HTML files)")
+
+# -------------------- Rerun helper (new/old Streamlit) --------------------
 def _rerun():
     """Streamlit rerun helper for both old and new versions."""
     try:
@@ -10,29 +23,17 @@ def _rerun():
     except AttributeError:
         st.experimental_rerun()
 
-# Optional Google Sheets support
-USE_GSHEETS = True
-try:
-    import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
-except Exception:
-    USE_GSHEETS = False
-
-st.set_page_config(page_title="AKI Expert Review — Sheets (no HTML)", layout="wide")
-st.title("AKI Expert Review — Sheets-backed (no HTML files)")
-
 # ================== Google Sheets helpers ==================
+@st.cache_resource(show_spinner=False)
 def get_gs_client():
     """Authorize using service account from Streamlit secrets (or local file as fallback)."""
     if not USE_GSHEETS:
         return None
-    # Classic oauth2client scopes (you need Drive to open/create by ID)
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive",
     ]
     try:
-        # Cloud: st.secrets["service_account"] (can be dict or JSON string)
         if "service_account" in st.secrets:
             data = st.secrets["service_account"]
             if isinstance(data, str):
@@ -48,26 +49,35 @@ def get_gs_client():
         st.error(f"Google auth error: {e}")
         return None
 
+@st.cache_resource(show_spinner=False)
 def open_sheet(client):
-    """Open the Google Sheet by ID from secrets; fail clearly if not found."""
+    """Open the Google Sheet by ID from secrets; retry for transient API errors."""
     sheet_id = st.secrets.get("gsheet_id", "").strip()
     if not sheet_id:
-        st.error("Missing gsheet_id in Secrets. Add the Google Sheet ID between /d/ and /edit.")
+        st.error("Missing gsheet_id in Secrets. Add the Google Sheet ID (between /d/ and /edit).")
         st.stop()
-    try:
-        return client.open_by_key(sheet_id)
-    except gspread.SpreadsheetNotFound:
-        st.error(
-            "Could not open the Google Sheet by ID. "
-            "Double-check gsheet_id in Secrets and share the sheet with the service-account email as Editor."
-        )
-        st.stop()
+
+    last_err = None
+    for i in range(4):  # up to 4 tries with backoff
+        try:
+            return client.open_by_key(sheet_id)
+        except SpreadsheetNotFound:
+            st.error(
+                "Could not open the Google Sheet by ID. "
+                "Double-check gsheet_id and share the sheet with the service-account email as Editor."
+            )
+            st.stop()
+        except APIError as e:
+            last_err = e
+            time.sleep(1.2 * (i + 1))  # 1.2s, 2.4s, 3.6s, 4.8s
+    st.error(f"Google Sheets API error after retries: {last_err}")
+    st.stop()
 
 def get_or_create_ws(sh, title, headers=None):
     """Get a worksheet by title; create with headers if missing. Non-destructive header merge."""
     try:
         ws = sh.worksheet(title)
-    except gspread.WorksheetNotFound:
+    except WorksheetNotFound:
         ws = sh.add_worksheet(title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
         if headers:
             ws.update([headers])
@@ -85,11 +95,7 @@ def get_or_create_ws(sh, title, headers=None):
             # Resize columns if needed; then write merged header row
             if ws.col_count < len(merged):
                 ws.resize(rows=ws.row_count, cols=len(merged))
-            # Write the merged header row in one update
-            range_end_col = len(merged)
-            start_col = 1
-            # Build a 2D list for update
-            ws.update(f"A1:{gspread.utils.rowcol_to_a1(1, range_end_col)[0]}1", [merged])
+            ws.update("A1", [merged])  # write merged headers starting at A1
 
     return ws
 
@@ -132,7 +138,7 @@ if not st.session_state.entered:
 # ================== Load data from Google Sheets ==================
 gc = get_gs_client()
 if gc is None:
-    st.error("Google Sheets client not available. Ensure API enabled and secrets or service_account.json present.")
+    st.error("Google Sheets client not available. Ensure API is enabled and Secrets/service_account.json exist.")
     st.stop()
 
 sh = open_sheet(gc)
@@ -221,7 +227,6 @@ with right:
                 y=alt.Y("uo:Q", title="mL/kg/h")
             )
             # reference rule at 0.5
-            import numpy as np
             ref = pd.DataFrame({"time":[uo["timestamp"].min(), uo["timestamp"].max()], "ref":[0.5, 0.5]})
             ch_ref = alt.Chart(ref).mark_rule(strokeDash=[6,6]).encode(x="time:T", y="ref:Q")
             st.altair_chart(ch_uo + ch_ref, use_container_width=True)
@@ -261,6 +266,7 @@ if st.session_state.step == 1:
         append_dict(ws_resp, row)
         st.success("Saved Step 1.")
         st.session_state.step = 2
+        time.sleep(0.4)  # soften immediate re-open of the sheet
         _rerun()
 
 else:
@@ -291,6 +297,7 @@ else:
         # advance
         st.session_state.step = 1
         st.session_state.case_idx += 1
+        time.sleep(0.4)
         _rerun()
 
 # Navigation helpers
