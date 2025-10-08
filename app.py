@@ -28,6 +28,20 @@ def _scroll_top():
     """Force page scroll to top (inside iframe)."""
     _html("<script>window.scrollTo({top:0,left:0,behavior:'auto'});</script>", height=0)
 
+def _retry_gs(func, *args, tries=4, delay=1.0, backoff=1.6, **kwargs):
+    """
+    Retry wrapper for Google Sheets calls to ride over transient APIError (429/5xx).
+    """
+    last = None
+    for _ in range(tries):
+        try:
+            return func(*args, **kwargs)
+        except APIError as e:
+            last = e
+            time.sleep(delay)
+            delay *= backoff
+    raise RuntimeError(f"Google Sheets API error after retries: {last}")
+
 # ================== Google Sheets helpers ==================
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
@@ -80,36 +94,37 @@ def _open_sheet_cached():
     raise RuntimeError(f"Google Sheets API error after retries: {last_err}")
 
 def get_or_create_ws(sh, title, headers=None):
-    """Get a worksheet by title; create with headers if missing."""
+    """Get a worksheet by title; create with headers if missing. All calls are retried."""
     try:
-        ws = sh.worksheet(title)
-    except WorksheetNotFound:
-        ws = sh.add_worksheet(title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
+        ws = _retry_gs(sh.worksheet, title)
+    except RuntimeError:
+        # Try to create if not present
+        ws = _retry_gs(sh.add_worksheet, title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
         if headers:
-            ws.update([headers])
+            _retry_gs(ws.update, [headers])
 
     if headers:
-        existing = ws.row_values(1)
+        existing = _retry_gs(ws.row_values, 1)
         if not existing:
-            ws.update([headers])
+            _retry_gs(ws.update, [headers])
         elif existing != headers:
             merged = list(existing)
             for h in headers:
                 if h not in merged:
                     merged.append(h)
             if ws.col_count < len(merged):
-                ws.resize(rows=ws.row_count, cols=len(merged))
-            ws.update("A1", [merged])
+                _retry_gs(ws.resize, rows=ws.row_count, cols=len(merged))
+            _retry_gs(ws.update, "A1", [merged])
     return ws
 
 def ws_to_df(ws):
-    recs = ws.get_all_records()
+    recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
 
 def append_dict(ws, d):
-    headers = ws.row_values(1)
+    headers = _retry_gs(ws.row_values, 1)
     row = [d.get(h, "") for h in headers]
-    ws.append_row(row, value_input_option="USER_ENTERED")
+    _retry_gs(ws.append_row, row, value_input_option="USER_ENTERED")
 
 # ================== App state ==================
 def init_state():
@@ -152,7 +167,7 @@ except RuntimeError as e:
     st.error(str(e))
     st.stop()
 
-# Debug info
+# Debug info (optional)
 try:
     st.caption(f"Connected to Google Sheet: **{sh.title}**")
     st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
@@ -274,7 +289,7 @@ if st.session_state.step == 1:
         st.success("Saved Step 1.")
         st.session_state.step = 2
         st.session_state.jump_to_top = True
-        time.sleep(0.4)
+        time.sleep(0.3)
         _rerun()
 
 else:
@@ -305,7 +320,7 @@ else:
         st.session_state.step = 1
         st.session_state.case_idx += 1
         st.session_state.jump_to_top = True
-        time.sleep(0.4)
+        time.sleep(0.3)
         _rerun()
 
 # Navigation helpers
