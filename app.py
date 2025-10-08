@@ -25,30 +25,39 @@ def _rerun():
         st.experimental_rerun()
 
 def _scroll_top():
-    """Force the viewport to the top (robust against Streamlit’s scroll restore)."""
+    """Force the viewport to the absolute top in both the app iframe and parent."""
     _html(
         """
         <script>
         (function(){
-          function goTop(){
-            try{
-              window.scrollTo({top:0,left:0,behavior:'auto'});
-              if (window.parent && window.parent !== window){
-                window.parent.scrollTo({top:0,left:0,behavior:'auto'});
+          try { if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; } } catch(e) {}
+
+          function topNow(){
+            try {
+              window.scrollTo(0,0);
+              document.body && (document.body.scrollTop = 0);
+              document.documentElement && (document.documentElement.scrollTop = 0);
+              if (window.parent && window.parent !== window) {
+                try { window.parent.scrollTo(0,0); } catch(e){}
+                try {
+                  var pe = window.parent.document && window.parent.document.documentElement;
+                  if (pe) pe.scrollTop = 0;
+                } catch(e){}
               }
-            }catch(e){}
+            } catch(e){}
           }
-          goTop();
-          setTimeout(goTop, 0);
-          setTimeout(goTop, 120);
-          setTimeout(goTop, 400);
+          topNow();
+          setTimeout(topNow, 0);
+          setTimeout(topNow, 120);
+          setTimeout(topNow, 400);
+          setTimeout(topNow, 800);
         })();
         </script>
         """,
         height=0,
     )
 
-def _retry_gs(func, *args, tries=4, delay=1.0, backoff=1.6, **kwargs):
+def _retry_gs(func, *args, tries=6, delay=1.0, backoff=1.8, **kwargs):
     """Retry wrapper for Google Sheets API calls (handles 429/5xx)."""
     last = None
     for _ in range(tries):
@@ -92,9 +101,11 @@ def _open_sheet_cached():
     sheet_id = st.secrets.get("gsheet_id", "").strip()
     if not sheet_id:
         raise RuntimeError("Missing gsheet_id in Secrets. Add the Google Sheet ID between /d/ and /edit.")
+
     client = _get_client_cached()
     if client is None:
         raise RuntimeError("Google Sheets client not available. Check API enable + Secrets/service_account.json.")
+
     last_err = None
     for i in range(4):
         try:
@@ -118,8 +129,15 @@ def get_or_create_ws(sh, title, headers=None):
         if headers:
             _retry_gs(ws.update, [headers])
 
+    # Ensure header row exists and contains required headers (non-destructive)
     if headers:
-        existing = _retry_gs(ws.row_values, 1)
+        try:
+            existing = _retry_gs(ws.row_values, 1)
+        except RuntimeError as e:
+            # Non-fatal: continue so the app doesn't crash on transient failures.
+            st.warning(f"Could not read worksheet header for '{title}' right now; continuing. ({e})")
+            return ws
+
         if not existing:
             _retry_gs(ws.update, [headers])
         elif existing != headers:
@@ -150,13 +168,13 @@ def init_state():
     if "case_idx" not in st.session_state:
         st.session_state.case_idx = 0
     if "step" not in st.session_state:
-        st.session_state.step = 1
+        st.session_state.step = 1          # 1 or 2
     if "jump_to_top" not in st.session_state:
         st.session_state.jump_to_top = True  # start at top on first render
 
 init_state()
 
-# force top if the flag is set (do this early)
+# Force top early in the render if flagged
 if st.session_state.get("jump_to_top"):
     _scroll_top()
     st.session_state.jump_to_top = False
@@ -171,6 +189,7 @@ with st.sidebar:
             st.session_state.entered = True
             st.session_state.step = 1
             st.session_state.jump_to_top = True
+            _scroll_top()
             _rerun()
 
 if not st.session_state.entered:
@@ -246,12 +265,6 @@ with right:
         st.info("Step 1: Narrative only. Do not use structured data.")
     else:
         st.info("Step 2: Summary + Figures + Tables")
-        # nudge to top again when entering Step 2 (only once if you want)
-        # (we don't force every rerun to avoid fighting user scroll)
-        # if you want to guarantee: uncomment the next 2 lines
-        # st.session_state.jump_to_top = True
-        # _scroll_top()
-
         import altair as alt
         if not scr.empty:
             st.markdown("**Serum Creatinine (mg/dL)**")
@@ -311,7 +324,8 @@ if st.session_state.step == 1:
         st.success("Saved Step 1.")
         st.session_state.step = 2
         st.session_state.jump_to_top = True
-        time.sleep(0.3)
+        _scroll_top()
+        time.sleep(0.05)
         _rerun()
 
 else:
@@ -342,7 +356,8 @@ else:
         st.session_state.step = 1
         st.session_state.case_idx += 1
         st.session_state.jump_to_top = True
-        time.sleep(0.3)
+        _scroll_top()
+        time.sleep(0.05)
         _rerun()
 
 # Navigation helpers
@@ -355,10 +370,12 @@ with c1:
             st.session_state.case_idx -= 1
             st.session_state.step = 2
         st.session_state.jump_to_top = True
+        _scroll_top()
         _rerun()
 with c3:
     if st.button("Skip ▶"):
         st.session_state.step = 1
         st.session_state.case_idx += 1
         st.session_state.jump_to_top = True
+        _scroll_top()
         _rerun()
