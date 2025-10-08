@@ -3,6 +3,13 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+def _rerun():
+    """Streamlit rerun helper for both old and new versions."""
+    try:
+        st.rerun()
+    except AttributeError:
+        st.experimental_rerun()
+
 # Optional Google Sheets support
 USE_GSHEETS = True
 try:
@@ -254,7 +261,7 @@ if st.session_state.step == 1:
         append_dict(ws_resp, row)
         st.success("Saved Step 1.")
         st.session_state.step = 2
-        st.experimental_rerun()
+        _rerun()
 
 else:
     st.subheader("Step 2 — Questions (Full Context)")
@@ -284,7 +291,7 @@ else:
         # advance
         st.session_state.step = 1
         st.session_state.case_idx += 1
-        st.experimental_rerun()
+        _rerun()
 
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
@@ -295,9 +302,9 @@ with c1:
         elif st.session_state.case_idx > 0:
             st.session_state.case_idx -= 1
             st.session_state.step = 2
-        st.experimental_rerun()
+        _rerun()
 with c3:
     if st.button("Skip ▶"):
         st.session_state.step = 1
         st.session_state.case_idx += 1
-        st.experimental_rerun()
+        _rerun()
