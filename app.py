@@ -2,6 +2,7 @@ import os, json, time
 from datetime import datetime
 import pandas as pd
 import streamlit as st
+from streamlit.components.v1 import html as _html
 
 # Optional Google Sheets support
 USE_GSHEETS = True
@@ -15,13 +16,17 @@ except Exception:
 st.set_page_config(page_title="AKI Expert Review — Sheets (no HTML)", layout="wide")
 st.title("AKI Expert Review — Sheets-backed (no HTML files)")
 
-# -------------------- Rerun helper (new/old Streamlit) --------------------
+# -------------------- Helpers --------------------
 def _rerun():
     """Streamlit rerun helper for both old and new versions."""
     try:
         st.rerun()
     except AttributeError:
         st.experimental_rerun()
+
+def _scroll_top():
+    """Force page scroll to top (inside iframe)."""
+    _html("<script>window.scrollTo({top:0,left:0,behavior:'auto'});</script>", height=0)
 
 # ================== Google Sheets helpers ==================
 SCOPE = [
@@ -31,7 +36,7 @@ SCOPE = [
 
 @st.cache_resource(show_spinner=False)
 def _get_client_cached():
-    """Create and cache a gspread client (no args so it’s hashable for Streamlit)."""
+    """Create and cache a gspread client (no args so it’s hashable)."""
     if not USE_GSHEETS:
         return None
     try:
@@ -41,23 +46,17 @@ def _get_client_cached():
                 data = json.loads(data)
             creds = ServiceAccountCredentials.from_json_keyfile_dict(data, SCOPE)
         else:
-            # Local dev fallback
             if not os.path.exists("service_account.json"):
                 return None
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", SCOPE)
         return gspread.authorize(creds)
     except Exception as e:
-        # Avoid hard crash inside cache; return None so caller can show error nicely
         print("Google auth error:", e)
         return None
 
 @st.cache_resource(show_spinner=False)
 def _open_sheet_cached():
-    """
-    Open and cache the Spreadsheet object by ID.
-    No parameters here (so Streamlit can hash it).
-    Includes retry to ride over transient API errors.
-    """
+    """Open and cache the Spreadsheet object by ID with retry."""
     sheet_id = st.secrets.get("gsheet_id", "").strip()
     if not sheet_id:
         raise RuntimeError("Missing gsheet_id in Secrets. Add the Google Sheet ID between /d/ and /edit.")
@@ -67,7 +66,7 @@ def _open_sheet_cached():
         raise RuntimeError("Google Sheets client not available. Check API enable + Secrets/service_account.json.")
 
     last_err = None
-    for i in range(4):  # retry with simple backoff
+    for i in range(4):
         try:
             return client.open_by_key(sheet_id)
         except SpreadsheetNotFound:
@@ -81,7 +80,7 @@ def _open_sheet_cached():
     raise RuntimeError(f"Google Sheets API error after retries: {last_err}")
 
 def get_or_create_ws(sh, title, headers=None):
-    """Get a worksheet by title; create with headers if missing. Non-destructive header merge."""
+    """Get a worksheet by title; create with headers if missing."""
     try:
         ws = sh.worksheet(title)
     except WorksheetNotFound:
@@ -89,7 +88,6 @@ def get_or_create_ws(sh, title, headers=None):
         if headers:
             ws.update([headers])
 
-    # Ensure header row exists and contains required headers (non-destructive)
     if headers:
         existing = ws.row_values(1)
         if not existing:
@@ -101,7 +99,7 @@ def get_or_create_ws(sh, title, headers=None):
                     merged.append(h)
             if ws.col_count < len(merged):
                 ws.resize(rows=ws.row_count, cols=len(merged))
-            ws.update("A1", [merged])  # write merged headers starting at A1
+            ws.update("A1", [merged])
     return ws
 
 def ws_to_df(ws):
@@ -122,9 +120,16 @@ def init_state():
     if "case_idx" not in st.session_state:
         st.session_state.case_idx = 0
     if "step" not in st.session_state:
-        st.session_state.step = 1  # 1 or 2
+        st.session_state.step = 1
+    if "jump_to_top" not in st.session_state:
+        st.session_state.jump_to_top = False
 
 init_state()
+
+# scroll to top if flag set
+if st.session_state.get("jump_to_top"):
+    _scroll_top()
+    st.session_state.jump_to_top = False
 
 # ================== Sign-in ==================
 with st.sidebar:
@@ -147,14 +152,14 @@ except RuntimeError as e:
     st.error(str(e))
     st.stop()
 
-# Debug: confirm which spreadsheet and tabs we have (helps diagnose mismatches)
+# Debug info
 try:
     st.caption(f"Connected to Google Sheet: **{sh.title}**")
     st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
 except Exception as e:
     st.error(f"Could not list worksheets: {e}")
 
-# Worksheets (create if missing)
+# Worksheets
 adm_headers = ["case_id", "title", "discharge_summary", "weight_kg"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
@@ -210,7 +215,6 @@ with right:
         st.info("Step 1: Narrative only. Do not use structured data.")
     else:
         st.info("Step 2: Summary + Figures + Tables")
-        # Figures
         import altair as alt
         if not scr.empty:
             st.markdown("**Serum Creatinine (mg/dL)**")
@@ -230,7 +234,6 @@ with right:
                 x=alt.X("time:T", title="Time"),
                 y=alt.Y("uo:Q", title="mL/kg/h")
             )
-            # reference rule at 0.5
             ref = pd.DataFrame({"time":[uo["timestamp"].min(), uo["timestamp"].max()], "ref":[0.5, 0.5]})
             ch_ref = alt.Chart(ref).mark_rule(strokeDash=[6,6]).encode(x="time:T", y="ref:Q")
             st.altair_chart(ch_uo + ch_ref, use_container_width=True)
@@ -270,6 +273,7 @@ if st.session_state.step == 1:
         append_dict(ws_resp, row)
         st.success("Saved Step 1.")
         st.session_state.step = 2
+        st.session_state.jump_to_top = True
         time.sleep(0.4)
         _rerun()
 
@@ -291,16 +295,16 @@ else:
             "case_id": case_id,
             "step": 2,
             "q_aki": q_aki2,
-            "q_highlight": "",          # optional in step 2 — leaving blank
-            "q_rationale": q_reasoning, # store reasoning here
-            "q_confidence": "",         # not asked in step 2
-            "q_reasoning": q_reasoning  # duplicate if you prefer a dedicated column
+            "q_highlight": "",
+            "q_rationale": q_reasoning,
+            "q_confidence": "",
+            "q_reasoning": q_reasoning
         }
         append_dict(ws_resp, row)
         st.success("Saved Step 2.")
-        # advance
         st.session_state.step = 1
         st.session_state.case_idx += 1
+        st.session_state.jump_to_top = True
         time.sleep(0.4)
         _rerun()
 
@@ -313,9 +317,11 @@ with c1:
         elif st.session_state.case_idx > 0:
             st.session_state.case_idx -= 1
             st.session_state.step = 2
+        st.session_state.jump_to_top = True
         _rerun()
 with c3:
     if st.button("Skip ▶"):
         st.session_state.step = 1
         st.session_state.case_idx += 1
+        st.session_state.jump_to_top = True
         _rerun()
