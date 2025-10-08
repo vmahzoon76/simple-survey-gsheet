@@ -24,54 +24,61 @@ def _rerun():
         st.experimental_rerun()
 
 # ================== Google Sheets helpers ==================
+SCOPE = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive",
+]
+
 @st.cache_resource(show_spinner=False)
-def get_gs_client():
-    """Authorize using service account from Streamlit secrets (or local file as fallback)."""
+def _get_client_cached():
+    """Create and cache a gspread client (no args so it’s hashable for Streamlit)."""
     if not USE_GSHEETS:
         return None
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
     try:
         if "service_account" in st.secrets:
             data = st.secrets["service_account"]
             if isinstance(data, str):
                 data = json.loads(data)
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(data, scope)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(data, SCOPE)
         else:
             # Local dev fallback
             if not os.path.exists("service_account.json"):
                 return None
-            creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+            creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", SCOPE)
         return gspread.authorize(creds)
     except Exception as e:
-        st.error(f"Google auth error: {e}")
+        # Avoid hard crash inside cache; return None so caller can show error nicely
+        print("Google auth error:", e)
         return None
 
 @st.cache_resource(show_spinner=False)
-def open_sheet(client):
-    """Open the Google Sheet by ID from secrets; retry for transient API errors."""
+def _open_sheet_cached():
+    """
+    Open and cache the Spreadsheet object by ID.
+    No parameters here (so Streamlit can hash it).
+    Includes retry to ride over transient API errors.
+    """
     sheet_id = st.secrets.get("gsheet_id", "").strip()
     if not sheet_id:
-        st.error("Missing gsheet_id in Secrets. Add the Google Sheet ID (between /d/ and /edit).")
-        st.stop()
+        raise RuntimeError("Missing gsheet_id in Secrets. Add the Google Sheet ID between /d/ and /edit.")
+
+    client = _get_client_cached()
+    if client is None:
+        raise RuntimeError("Google Sheets client not available. Check API enable + Secrets/service_account.json.")
 
     last_err = None
-    for i in range(4):  # up to 4 tries with backoff
+    for i in range(4):  # retry with simple backoff
         try:
             return client.open_by_key(sheet_id)
         except SpreadsheetNotFound:
-            st.error(
+            raise RuntimeError(
                 "Could not open the Google Sheet by ID. "
                 "Double-check gsheet_id and share the sheet with the service-account email as Editor."
             )
-            st.stop()
         except APIError as e:
             last_err = e
-            time.sleep(1.2 * (i + 1))  # 1.2s, 2.4s, 3.6s, 4.8s
-    st.error(f"Google Sheets API error after retries: {last_err}")
-    st.stop()
+            time.sleep(1.2 * (i + 1))
+    raise RuntimeError(f"Google Sheets API error after retries: {last_err}")
 
 def get_or_create_ws(sh, title, headers=None):
     """Get a worksheet by title; create with headers if missing. Non-destructive header merge."""
@@ -92,11 +99,9 @@ def get_or_create_ws(sh, title, headers=None):
             for h in headers:
                 if h not in merged:
                     merged.append(h)
-            # Resize columns if needed; then write merged header row
             if ws.col_count < len(merged):
                 ws.resize(rows=ws.row_count, cols=len(merged))
             ws.update("A1", [merged])  # write merged headers starting at A1
-
     return ws
 
 def ws_to_df(ws):
@@ -136,12 +141,11 @@ if not st.session_state.entered:
     st.stop()
 
 # ================== Load data from Google Sheets ==================
-gc = get_gs_client()
-if gc is None:
-    st.error("Google Sheets client not available. Ensure API is enabled and Secrets/service_account.json exist.")
+try:
+    sh = _open_sheet_cached()
+except RuntimeError as e:
+    st.error(str(e))
     st.stop()
-
-sh = open_sheet(gc)
 
 # Debug: confirm which spreadsheet and tabs we have (helps diagnose mismatches)
 try:
@@ -266,7 +270,7 @@ if st.session_state.step == 1:
         append_dict(ws_resp, row)
         st.success("Saved Step 1.")
         st.session_state.step = 2
-        time.sleep(0.4)  # soften immediate re-open of the sheet
+        time.sleep(0.4)
         _rerun()
 
 else:
