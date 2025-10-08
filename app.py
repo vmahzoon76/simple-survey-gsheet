@@ -25,13 +25,31 @@ def _rerun():
         st.experimental_rerun()
 
 def _scroll_top():
-    """Force page scroll to top (inside iframe)."""
-    _html("<script>window.scrollTo({top:0,left:0,behavior:'auto'});</script>", height=0)
+    """Force the viewport to the top (robust against Streamlit’s scroll restore)."""
+    _html(
+        """
+        <script>
+        (function(){
+          function goTop(){
+            try{
+              window.scrollTo({top:0,left:0,behavior:'auto'});
+              if (window.parent && window.parent !== window){
+                window.parent.scrollTo({top:0,left:0,behavior:'auto'});
+              }
+            }catch(e){}
+          }
+          goTop();
+          setTimeout(goTop, 0);
+          setTimeout(goTop, 120);
+          setTimeout(goTop, 400);
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 def _retry_gs(func, *args, tries=4, delay=1.0, backoff=1.6, **kwargs):
-    """
-    Retry wrapper for Google Sheets calls to ride over transient APIError (429/5xx).
-    """
+    """Retry wrapper for Google Sheets API calls (handles 429/5xx)."""
     last = None
     for _ in range(tries):
         try:
@@ -74,11 +92,9 @@ def _open_sheet_cached():
     sheet_id = st.secrets.get("gsheet_id", "").strip()
     if not sheet_id:
         raise RuntimeError("Missing gsheet_id in Secrets. Add the Google Sheet ID between /d/ and /edit.")
-
     client = _get_client_cached()
     if client is None:
         raise RuntimeError("Google Sheets client not available. Check API enable + Secrets/service_account.json.")
-
     last_err = None
     for i in range(4):
         try:
@@ -94,11 +110,10 @@ def _open_sheet_cached():
     raise RuntimeError(f"Google Sheets API error after retries: {last_err}")
 
 def get_or_create_ws(sh, title, headers=None):
-    """Get a worksheet by title; create with headers if missing. All calls are retried."""
+    """Get a worksheet by title; create with headers if missing. All gspread calls retried."""
     try:
         ws = _retry_gs(sh.worksheet, title)
     except RuntimeError:
-        # Try to create if not present
         ws = _retry_gs(sh.add_worksheet, title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
         if headers:
             _retry_gs(ws.update, [headers])
@@ -137,11 +152,11 @@ def init_state():
     if "step" not in st.session_state:
         st.session_state.step = 1
     if "jump_to_top" not in st.session_state:
-        st.session_state.jump_to_top = False
+        st.session_state.jump_to_top = True  # start at top on first render
 
 init_state()
 
-# scroll to top if flag set
+# force top if the flag is set (do this early)
 if st.session_state.get("jump_to_top"):
     _scroll_top()
     st.session_state.jump_to_top = False
@@ -155,6 +170,8 @@ with st.sidebar:
             st.session_state.reviewer_id = rid.strip()
             st.session_state.entered = True
             st.session_state.step = 1
+            st.session_state.jump_to_top = True
+            _rerun()
 
 if not st.session_state.entered:
     st.info("Please sign in with your Reviewer ID to begin.")
@@ -174,14 +191,13 @@ try:
 except Exception as e:
     st.error(f"Could not list worksheets: {e}")
 
-# Worksheets
+# Worksheets (created if missing)
 adm_headers = ["case_id", "title", "discharge_summary", "weight_kg"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
     "timestamp_utc","reviewer_id","case_id","step",
     "q_aki","q_highlight","q_rationale","q_confidence","q_reasoning"
 ]
-
 ws_adm  = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
@@ -230,6 +246,12 @@ with right:
         st.info("Step 1: Narrative only. Do not use structured data.")
     else:
         st.info("Step 2: Summary + Figures + Tables")
+        # nudge to top again when entering Step 2 (only once if you want)
+        # (we don't force every rerun to avoid fighting user scroll)
+        # if you want to guarantee: uncomment the next 2 lines
+        # st.session_state.jump_to_top = True
+        # _scroll_top()
+
         import altair as alt
         if not scr.empty:
             st.markdown("**Serum Creatinine (mg/dL)**")
