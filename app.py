@@ -277,6 +277,10 @@ admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
+# Cache the response headers once so we don’t re-read them on every save
+if "resp_headers" not in st.session_state:
+    st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
+
 
 
 if admissions.empty:
