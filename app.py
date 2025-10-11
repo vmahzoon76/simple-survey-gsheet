@@ -344,20 +344,22 @@ with left:
     </div>
 
     <script>
-    const box = window.parent.document.querySelector('#note-box');
+    const box = document.getElementById('note-box');  // ✅ fixed: now runs inside iframe
     box.onmouseup = function() {{
         const sel = window.getSelection();
         const text = sel.toString();
         if (text.length > 0) {{
+            // 1️⃣ visual feedback highlight
             const range = sel.getRangeAt(0);
             const span = document.createElement("span");
-            span.style.backgroundColor = "#fff59d";
+            span.style.backgroundColor = "#fff59d";  // soft yellow
             span.style.padding = "0.1em";
             try {{
                 range.surroundContents(span);
             }} catch (e) {{
                 console.log("Highlight error:", e);
             }}
+            // 2️⃣ send selection to Streamlit
             window.parent.postMessage({{type: 'highlightedText', text: text}}, '*');
         }}
     }};
@@ -370,6 +372,7 @@ with left:
         key="highlighted_text_box",
         height=100,
     )
+
 
 with right:
     if st.session_state.step == 1:
