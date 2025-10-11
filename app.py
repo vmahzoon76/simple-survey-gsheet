@@ -266,10 +266,64 @@ ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
 admissions = ws_to_df(ws_adm)
 labs = ws_to_df(ws_labs)
+responses = ws_to_df(ws_resp) 
 
 if admissions.empty:
     st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
     st.stop()
+
+
+# ===== Resume progress for this reviewer (run once per sign-in) =====
+if st.session_state.entered and not st.session_state.get("progress_initialized"):
+    try:
+        resp = responses.copy()
+        rid = str(st.session_state.reviewer_id)
+
+        # Filter for this reviewer only
+        if not resp.empty:
+            resp = resp[resp["reviewer_id"].astype(str) == rid]
+        else:
+            resp = resp  # leave empty
+
+        # Normalize types
+        if not resp.empty and "step" in resp.columns:
+            resp["step"] = pd.to_numeric(resp["step"], errors="coerce").fillna(0).astype(int)
+        else:
+            resp["step"] = []
+
+        # Sets of finished/started cases
+        completed_ids = set(resp.loc[resp["step"] == 2, "case_id"].astype(str)) if not resp.empty else set()
+        step1_only_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
+
+        # Find first admission not fully completed
+        target_idx = None
+        target_step = 1
+        for idx, row in admissions.reset_index(drop=True).iterrows():
+            cid = str(row.get("case_id", ""))
+            if cid in completed_ids:
+                continue
+            target_idx = idx
+            target_step = 2 if cid in step1_only_ids else 1
+            break
+
+        if target_idx is not None:
+            st.session_state.case_idx = int(target_idx)
+            st.session_state.step = int(target_step)
+        else:
+            # All admissions completed by this reviewer
+            st.session_state.case_idx = len(admissions)
+            st.session_state.step = 1
+
+    except Exception as e:
+        st.warning(f"Could not auto-resume progress: {e}")
+
+    # Mark done and refresh to land on the right case/step
+    st.session_state.progress_initialized = True
+    st.session_state.jump_to_top = True
+    _scroll_top()
+    time.sleep(0.15)
+    _rerun()
+
 
 # ================== Current case ==================
 if st.session_state.case_idx >= len(admissions):
