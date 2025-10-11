@@ -29,6 +29,13 @@ def _rerun():
     except AttributeError:
         st.experimental_rerun()
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _read_ws_df(ws):
+    # one API call, cached for 60 seconds
+    recs = _retry_gs(ws.get_all_records)
+    return pd.DataFrame(recs)
+
+
 def _scroll_top():
     """
     Aggressive scroll-to-top:
@@ -264,9 +271,10 @@ ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
-admissions = ws_to_df(ws_adm)
-labs = ws_to_df(ws_labs)
-responses = ws_to_df(ws_resp) 
+admissions = _read_ws_df(ws_adm)
+labs = _read_ws_df(ws_labs)
+responses = _read_ws_df(ws_resp)
+
 
 if admissions.empty:
     st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
@@ -400,70 +408,83 @@ st.markdown("---")
 # ================== Questions & Saving ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
-    q_aki = st.radio(
-        "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
-        ["Yes", "No"], horizontal=True
-    )
-    q_highlight = st.text_area(
-        "Please highlight (paste) any specific text in the note that impacted your conclusion.",
-        height=120
-    )
-    q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140)
-    q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3)
+    with st.form("step1_form", clear_on_submit=False):
+        q_aki = st.radio(
+            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+            ["Yes", "No"], horizontal=True, key="q1_aki"
+        )
+        q_highlight = st.text_area(
+            "Please highlight (paste) any specific text in the note that impacted your conclusion.",
+            height=120, key="q1_highlight"
+        )
+        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
+        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
 
-    if st.button("Save Step 1 ✅"):
-        row = {
-            "timestamp_utc": datetime.utcnow().isoformat(),
-            "reviewer_id": st.session_state.reviewer_id,
-            "case_id": case_id,
-            "step": 1,
-            "q_aki": q_aki,
-            "q_highlight": q_highlight,
-            "q_rationale": q_rationale,
-            "q_confidence": q_conf,
-            "q_reasoning": ""  # not used in step 1
-        }
-        append_dict(ws_resp, row)
-        st.success("Saved Step 1.")
-        # transition to step 2 and force top on next render
-        st.session_state.step = 2
-        st.session_state.jump_to_top = True
-        _scroll_top()
-        time.sleep(0.25)
-        _rerun()
+        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
+
+    if submitted1:
+        try:
+            st.session_state.saving1 = True
+            row = {
+                "timestamp_utc": datetime.utcnow().isoformat(),
+                "reviewer_id": st.session_state.reviewer_id,
+                "case_id": case_id,
+                "step": 1,
+                "q_aki": q_aki,
+                "q_highlight": q_highlight,
+                "q_rationale": q_rationale,
+                "q_confidence": q_conf,
+                "q_reasoning": ""
+            }
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)  # note: updated append_dict below
+            st.success("Saved Step 1.")
+            st.session_state.step = 2
+            st.session_state.jump_to_top = True
+            _scroll_top()
+            time.sleep(0.25)
+            _rerun()
+        finally:
+            st.session_state.saving1 = False
+
 
 else:
     st.subheader("Step 2 — Questions (Full Context)")
-    q_aki2 = st.radio(
-        "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
-        ["Yes", "No"], horizontal=True
-    )
-    q_reasoning = st.text_area(
-        "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
-        height=180
-    )
+    with st.form("step2_form", clear_on_submit=False):
+        q_aki2 = st.radio(
+            "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
+            ["Yes", "No"], horizontal=True, key="q2_aki"
+        )
+        q_reasoning = st.text_area(
+            "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
+            height=180, key="q2_reasoning"
+        )
+        submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
 
-    if st.button("Save Step 2 ✅ (Next case)"):
-        row = {
-            "timestamp_utc": datetime.utcnow().isoformat(),
-            "reviewer_id": st.session_state.reviewer_id,
-            "case_id": case_id,
-            "step": 2,
-            "q_aki": q_aki2,
-            "q_highlight": "",
-            "q_rationale": q_reasoning,
-            "q_confidence": "",
-            "q_reasoning": q_reasoning
-        }
-        append_dict(ws_resp, row)
-        st.success("Saved Step 2.")
-        # advance to next admission and force top on next render
-        st.session_state.step = 1
-        st.session_state.case_idx += 1
-        st.session_state.jump_to_top = True
-        _scroll_top()
-        time.sleep(0.25)
-        _rerun()
+    if submitted2:
+        try:
+            st.session_state.saving2 = True
+            row = {
+                "timestamp_utc": datetime.utcnow().isoformat(),
+                "reviewer_id": st.session_state.reviewer_id,
+                "case_id": case_id,
+                "step": 2,
+                "q_aki": q_aki2,
+                "q_highlight": "",
+                "q_rationale": q_reasoning,  # keep if you want both; otherwise drop this field from headers later
+                "q_confidence": "",
+                "q_reasoning": q_reasoning
+            }
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+            st.success("Saved Step 2.")
+            st.session_state.step = 1
+            st.session_state.case_idx += 1
+            st.session_state.jump_to_top = True
+            _scroll_top()
+            time.sleep(0.25)
+            _rerun()
+        finally:
+            st.session_state.saving2 = False
+
 
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
