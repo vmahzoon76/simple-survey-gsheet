@@ -30,10 +30,12 @@ def _rerun():
         st.experimental_rerun()
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _read_ws_df(ws):
-    # one API call, cached for 60 seconds
+def _read_ws_df(sheet_id, ws_title):
+    sh = _open_sheet_cached()
+    ws = sh.worksheet(ws_title)
     recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
+
 
 
 def _scroll_top():
@@ -271,9 +273,10 @@ ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
-admissions = _read_ws_df(ws_adm)
-labs = _read_ws_df(ws_labs)
-responses = _read_ws_df(ws_resp)
+admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
+labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
+responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
+
 
 
 if admissions.empty:
