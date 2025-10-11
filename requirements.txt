@@ -3,4 +3,4 @@ gspread
 oauth2client
 pandas
 altair
-streamlit-quil
+streamlit-quill
