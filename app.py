@@ -39,17 +39,20 @@ import html as _py_html
 from streamlit.components.v1 import html as _html
 import json as _json
 
+# ======== REPLACE your existing highlight_widget with this version ========
+import html as _py_html
+from streamlit.components.v1 import html as _html
+
 def highlight_widget(text: str, key: str = None, height: int = 420):
     """
-    Returns a dict:
-      {
-        "highlights": [{"start": int, "end": int, "text": str}, ...],
-        "html": "<mark>...</mark>..."
-      }
-    Works on older Streamlit versions by using window.parent.postMessage fallback.
+    Render a selectable text box. Returns a dict via Streamlit's component channel:
+      {"highlights": [{"start":..., "end":..., "text":"..."}], "html": "<mark>...</mark>"}
+    NOTE: No 'key'/'scrolling' args passed to _html() to avoid TypeError on some builds.
     """
+    # Escape HTML, then pass as a JSON string (prevents back-tick / quote issues in JS)
     safe_text = _py_html.escape(text)
-    safe_text_json = _json.dumps(safe_text)  # safe JS string literal
+    # Wrap as JSON string literal the JS can use directly
+    safe_text_json = json.dumps(safe_text)
 
     code = f"""
     <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
@@ -57,7 +60,6 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
         <button id="addBtn">Add highlight</button>
         <button id="clearBtn" style="margin-left:6px;">Clear all</button>
       </div>
-
       <div id="box"
            style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;"></div>
 
@@ -71,39 +73,40 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
       </div>
 
       <script>
+        // Use JSON-literal to avoid template-string issues
         const original = {safe_text_json};
 
         const box = document.getElementById('box');
+        box.textContent = original;  // inject safely as plain text
+
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
         const preview = document.getElementById('preview');
-        box.textContent = original;
-
         let highlights = [];
 
-        function selOffsets() {{
+        function currentSelectionOffsets() {{
           const sel = window.getSelection();
           if (!sel || sel.rangeCount === 0) return null;
           const range = sel.getRangeAt(0);
           if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
-
-          const pre = document.createRange();
-          pre.setStart(box, 0);
-          pre.setEnd(range.startContainer, range.startOffset);
-          const start = pre.toString().length;
+          const preRange = document.createRange();
+          preRange.setStart(box, 0);
+          preRange.setEnd(range.startContainer, range.startOffset);
+          const start = preRange.toString().length;
           const len = range.toString().length;
-          return len > 0 ? {{start, end: start + len}} : null;
+          return len > 0 ? {{start: start, end: start + len}} : null;
         }}
 
         function escapeHtml(s) {{
-          return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
-                  .replaceAll('>','&gt;').replaceAll('"','&quot;')
-                  .replaceAll("'",'&#039;');
+          return s
+            .replaceAll('&','&amp;').replaceAll('<','&lt;')
+            .replaceAll('>','&gt;').replaceAll('"','&quot;')
+            .replaceAll("'",'&#039;');
         }}
 
-        function mergeRanges(r) {{
-          if (!r.length) return [];
-          const s = r.slice().sort((a,b)=>a.start-b.start);
+        function mergeRanges(ranges) {{
+          if (ranges.length===0) return [];
+          const s = ranges.slice().sort((a,b)=>a.start-b.start);
           const out = [s[0]];
           for (let i=1;i<s.length;i++) {{
             const last = out[out.length-1], cur = s[i];
@@ -113,76 +116,56 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
           return out;
         }}
 
-        function render() {{
-          if (!highlights.length) {{ preview.textContent = original; return; }}
-          const s = highlights.slice().sort((a,b)=>a.start-b.start);
-          let html = '', c = 0;
-          for (const h of s) {{
-            html += escapeHtml(original.slice(c, h.start));
-            html += '<mark>' + escapeHtml(original.slice(h.start, h.end)) + '</mark>';
-            c = h.end;
+        function rebuildPreview() {{
+          if (highlights.length === 0) {{ preview.textContent = original; return; }}
+          const sorted = highlights.slice().sort((a,b)=>a.start-b.start);
+          let html = '', cursor = 0;
+          for (const h of sorted) {{
+            const pre = original.slice(cursor, h.start);
+            const mid = original.slice(h.start, h.end);
+            html += escapeHtml(pre) + '<mark>' + escapeHtml(mid) + '</mark>';
+            cursor = h.end;
           }}
-          html += escapeHtml(original.slice(c));
+          html += escapeHtml(original.slice(cursor));
           preview.innerHTML = html;
         }}
 
-        function postValue() {{
+        function post() {{
           const payload = {{
-            highlights: highlights.map(h => ({{...h, text: original.slice(h.start, h.end)}})),
+            highlights: highlights.map(h => ({{...h, text: original.slice(h.start,h.end)}})),
             html: preview.innerHTML
           }};
-
-          // New API (Streamlit >= 1.36-ish)
+          // This works with components.html in modern Streamlit
           if (window.Streamlit && window.Streamlit.setComponentValue) {{
             window.Streamlit.setComponentValue(payload);
-            return;
           }}
-
-          // Legacy fallback for components.html
-          try {{
-            window.parent.postMessage({{
-              isStreamlitMessage: true,
-              type: "streamlit:setComponentValue",
-              value: payload
-            }}, "*");
-          }} catch (e) {{}}
         }}
 
         addBtn.onclick = () => {{
-          const off = selOffsets();
+          const off = currentSelectionOffsets();
           if (!off) return;
           highlights.push(off);
           highlights = mergeRanges(highlights);
-          render();
-          postValue();
+          rebuildPreview();
+          post();
         }};
-
         clearBtn.onclick = () => {{
           highlights = [];
-          render();
-          postValue();
+          rebuildPreview();
+          post();
         }};
 
-        // initial
-        render();
-
-        // Height (new + legacy)
+        // initial render and height
+        rebuildPreview();
         if (window.Streamlit && window.Streamlit.setFrameHeight) {{
           window.Streamlit.setFrameHeight({height});
-        }} else {{
-          try {{
-            window.parent.postMessage({{
-              isStreamlitMessage: true,
-              type: "streamlit:setFrameHeight",
-              height: {height}
-            }}, "*");
-          }} catch(e) {{}}
         }}
       </script>
     </div>
     """
-    # Keep a stable key if you can; if it errors on your build, remove key=key line.
-    return _html(code, height=height + 40, key=key)
+
+    # IMPORTANT: Do not pass key / scrolling (prevents TypeError on some builds)
+    return _html(code, height=height + 40)
 
 
 
@@ -582,96 +565,59 @@ with right:
 st.markdown("---")
 
 # ================== Questions & Saving ==================
-# ================== Step 1 ==================
-# ================== Step 1 ==================
-# ================== Step 1 ==================
-# ================== Step 1 ==================
-# ================== Step 1 ==================
-# ================== Step 1 ==================
-# ================== Step 1 ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
-    # ------------------------------------------------------
-    # 1️⃣  Highlight widget  (must be OUTSIDE the form)
-    # ------------------------------------------------------
     st.markdown("**Highlight the exact text that influenced your conclusion**")
     hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
-
-    # Cache the latest highlights so they survive a submit-triggered rerun
-    cache_key = f"hl_cache_{case_id}"
+    
+    # Persist latest payload so it survives the form submit rerun
     if isinstance(hl_val, dict):
-        st.session_state[cache_key] = hl_val
-
-    # Show a preview of either live or cached highlights
-    _show = hl_val if isinstance(hl_val, dict) else st.session_state.get(cache_key)
-    if isinstance(_show, dict) and _show.get("html"):
+        st.session_state[f"hl_payload_{case_id}"] = hl_val
+    
+    # Optional: show a Python-side preview too (pulled from session_state if available)
+    hl_preview = st.session_state.get(f"hl_payload_{case_id}", {})
+    if isinstance(hl_preview, dict) and hl_preview.get("html"):
         with st.expander("Your selected highlights (preview)"):
-            st.markdown(_show["html"], unsafe_allow_html=True)
+            st.markdown(hl_preview["html"], unsafe_allow_html=True)
 
-    # ------------------------------------------------------
-    # 2️⃣  Form for remaining Step 1 questions
-    # ------------------------------------------------------
+
     with st.form("step1_form", clear_on_submit=False):
-        q_aki = st.radio(
-            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
-            ["Yes", "No"], horizontal=True, key="q1_aki"
-        )
+        q_aki = st.radio("Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+                         ["Yes", "No"], horizontal=True, key="q1_aki")
+        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
+        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
-        q_rationale = st.text_area(
-            "Please provide a brief rationale for your assessment.",
-            height=140, key="q1_rationale"
-        )
-
-        q_conf = st.slider(
-            "How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf"
-        )
-
-        submitted1 = st.form_submit_button(
-            "Save Step 1 ✅",
-            disabled=st.session_state.get("saving1", False)
-        )
-
-    # ------------------------------------------------------
-    # 3️⃣  When submitted → save to Google Sheet
-    # ------------------------------------------------------
     if submitted1:
         try:
             st.session_state.saving1 = True
-
-            # Retrieve cached highlights (persistent across reruns)
-            cached = st.session_state.get(cache_key)
-            if isinstance(cached, dict):
-                hl_json = json.dumps(cached.get("highlights", []))
-                hl_html = cached.get("html", "")
-            else:
-                hl_json = "[]"
-                hl_html = ""
-
+    
+            # Read persisted payload (survives rerun)
+            saved_hl = st.session_state.get(f"hl_payload_{case_id}", {})
+            hl_html = saved_hl.get("html", "")  # <-- store HTML
+            # If you also want JSON, you can pull: json.dumps(saved_hl.get("highlights", []))
+    
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": hl_json,       # store JSON offsets + text
+                "q_highlight": hl_html,          # <-- save HTML here
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
-                "q_reasoning": "",
-                "q_highlight_html": hl_html    # optional—include column in resp_headers
+                "q_reasoning": ""
             }
-
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
+            _scroll_top(); time.sleep(0.25)
             _rerun()
-
         finally:
             st.session_state.saving1 = False
+
 
 
 
