@@ -691,12 +691,12 @@ else:
         
         if q_aki2 == "Yes":
             q_etiology = st.text_area(
-                "AKI etiology — choose ONE (Pre-renal / Intrinsic / Post-renal / Multi-factorial) and explain how you concluded it:",
+                "AKI etiology —  What was the reason behind AKI? choose ONE (Pre-renal / Intrinsic / Post-renal / Multi-factorial) and explain how you concluded it:",
                 key="q2_etiology",
                 height=120
             )
             q_stage = st.text_area(
-                "AKI stage — choose ONE (Stage 1 / Stage 2 / Stage 3 / Unclear) and explain how you concluded it:",
+                "AKI stage — What stage of AKI do you believe the patient reached? choose ONE (Stage 1 / Stage 2 / Stage 3 / Unclear) and explain how you concluded it:",
                 key="q2_stage",
                 height=120
             )
