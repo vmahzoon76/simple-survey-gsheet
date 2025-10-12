@@ -58,7 +58,7 @@ import html as _py_html
 from streamlit.components.v1 import html as _html
 import json
 
-def highlight_widget(text: str, case_id: str, height: int = 280):
+def highlight_widget_inside_form(text: str, case_id: str, height: int = 280):
     """
     One-box highlighter for *inside* a Streamlit form.
     - Buttons at the top.
