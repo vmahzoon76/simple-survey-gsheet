@@ -289,7 +289,7 @@ st.markdown(f"### {case_id} — {title}")
 
 # ================== HIGHLIGHT UTILITIES ==================
 import html
-from streamlit_js_eval import streamlit_js_eval  # ensure streamlit-js-eval is in requirements
+from streamlit_js_eval import streamlit_js_eval  # pip install streamlit-js-eval
 
 def _merge_overlaps(spans):
     if not spans: return []
@@ -332,14 +332,18 @@ with left:
     summary_html = _render_with_highlights(summary, st.session_state[hl_key])
     st.markdown(summary_html, unsafe_allow_html=True)
 
-    # 🔧 NEW: capture selection on mouseup inside #sum and cache it in window._hlSel
+    # Hidden store to persist the latest selection JSON across blur/reruns
+    st.markdown("<pre id='hl_store' style='display:none'></pre>", unsafe_allow_html=True)
+
+    # Capture selection on mouseup and write it to #hl_store (NOT a global var)
     _html("""
 <script>
 (function(){
   const box = document.getElementById('sum');
-  if (!box) return;
+  const store = document.getElementById('hl_store');
+  if (!box || !store) return;
 
-  function getOffsets(rng) {
+  function getOffsets(rng){
     const pre = document.createRange();
     pre.selectNodeContents(box);
     pre.setEnd(rng.startContainer, rng.startOffset);
@@ -351,16 +355,16 @@ with left:
   box.addEventListener('mouseup', function(){
     try{
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) { window._hlSel = null; return; }
+      if (!sel || sel.rangeCount === 0) { store.textContent = ""; return; }
       const rng = sel.getRangeAt(0);
-      if (!box.contains(rng.commonAncestorContainer)) { window._hlSel = null; return; }
+      if (!box.contains(rng.commonAncestorContainer)) { store.textContent = ""; return; }
       const payload = getOffsets(rng);
       if (payload.text && payload.text.length > 0) {
-        window._hlSel = payload;
+        store.textContent = JSON.stringify(payload);
       } else {
-        window._hlSel = null;
+        store.textContent = "";
       }
-    }catch(e){ window._hlSel = null; }
+    }catch(e){ store.textContent = ""; }
   }, false);
 })();
 </script>
@@ -368,11 +372,22 @@ with left:
 
     colA, colB = st.columns([1, 3])
     with colA:
-        add_clicked = st.button("➕ Add selection", help="Select text inside the summary box, then click")
+        add_clicked = st.button("➕ Add selection", help="Select text inside the summary box, release mouse, then click")
 
     if add_clicked:
-        # Read cached selection (remains valid even if the button click clears the live selection)
-        sel = streamlit_js_eval(js_expressions="window._hlSel || null", key=f"cached_sel_{case_id}")
+        # Read the stored selection JSON string from #hl_store
+        raw = streamlit_js_eval(
+            js_expressions="(function(){var el=document.getElementById('hl_store'); return el?el.textContent:''})()",
+            key=f"read_store_{case_id}"
+        )
+        if isinstance(raw, str) and raw.strip():
+            try:
+                sel = json.loads(raw)
+            except Exception:
+                sel = None
+        else:
+            sel = None
+
         if sel and isinstance(sel, dict) and sel.get("text"):
             st.session_state[hl_key].append(sel)
             st.session_state[hl_key] = _merge_overlaps(st.session_state[hl_key])
