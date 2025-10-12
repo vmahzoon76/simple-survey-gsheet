@@ -26,16 +26,20 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 from streamlit.components.v1 import html as _html
 import html as _py_html
 
-def highlight_widget(text: str, key: str = "hl_1", height: int = 420):
+# ======== REPLACE your existing highlight_widget with this version ========
+import html as _py_html
+from streamlit.components.v1 import html as _html
+
+def highlight_widget(text: str, key: str = None, height: int = 420):
     """
-    Render a selectable text box. Users can drag/select text, click 'Add highlight',
-    and the widget returns a dict with:
-      - 'highlights': list of {start, end, text}
-      - 'html': the text with <mark> tags applied (preview)
-    Returns None until the first interaction in the iframe posts a value.
+    Render a selectable text box. Returns a dict via Streamlit's component channel:
+      {"highlights": [{"start":..., "end":..., "text":"..."}], "html": "<mark>...</mark>"}
+    NOTE: No 'key'/'scrolling' args passed to _html() to avoid TypeError on some builds.
     """
-    # Escape to avoid accidental HTML injection; we’ll show with white-space: pre-wrap
+    # Escape HTML, then pass as a JSON string (prevents back-tick / quote issues in JS)
     safe_text = _py_html.escape(text)
+    # Wrap as JSON string literal the JS can use directly
+    safe_text_json = json.dumps(safe_text)
 
     code = f"""
     <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
@@ -44,32 +48,34 @@ def highlight_widget(text: str, key: str = "hl_1", height: int = 420):
         <button id="clearBtn" style="margin-left:6px;">Clear all</button>
       </div>
       <div id="box"
-           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;">
-        {safe_text}
-      </div>
+           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;"></div>
+
       <div style="margin-top:10px;font-size:12px;color:#666;">
-        Select text above, then click <b>Add highlight</b>. You can add multiple.
+        Select text inside the box above, then click <b>Add highlight</b>.
       </div>
+
       <div style="margin-top:12px;">
         <div style="font-weight:600;margin-bottom:6px;">Preview</div>
         <div id="preview" style="border:1px dashed #ccc;border-radius:8px;padding:10px;white-space:pre-wrap;max-height:140px;overflow:auto;"></div>
       </div>
+
       <script>
-        const original = `{safe_text}`; // escaped already (\\n preserved)
+        // Use JSON-literal to avoid template-string issues
+        const original = {safe_text_json};
+
         const box = document.getElementById('box');
+        box.textContent = original;  // inject safely as plain text
+
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
         const preview = document.getElementById('preview');
         let highlights = [];
 
-        // Utility: compute [start,end) offsets of current selection relative to full text
         function currentSelectionOffsets() {{
           const sel = window.getSelection();
           if (!sel || sel.rangeCount === 0) return null;
           const range = sel.getRangeAt(0);
-          // Ensure selection is inside our box
           if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
-
           const preRange = document.createRange();
           preRange.setStart(box, 0);
           preRange.setEnd(range.startContainer, range.startOffset);
@@ -78,77 +84,65 @@ def highlight_widget(text: str, key: str = "hl_1", height: int = 420):
           return len > 0 ? {{start: start, end: start + len}} : null;
         }}
 
-        function rebuildPreview() {{
-          if (highlights.length === 0) {{
-            preview.textContent = original;
-            return;
+        function escapeHtml(s) {{
+          return s
+            .replaceAll('&','&amp;').replaceAll('<','&lt;')
+            .replaceAll('>','&gt;').replaceAll('"','&quot;')
+            .replaceAll("'",'&#039;');
+        }}
+
+        function mergeRanges(ranges) {{
+          if (ranges.length===0) return [];
+          const s = ranges.slice().sort((a,b)=>a.start-b.start);
+          const out = [s[0]];
+          for (let i=1;i<s.length;i++) {{
+            const last = out[out.length-1], cur = s[i];
+            if (cur.start <= last.end) last.end = Math.max(last.end, cur.end);
+            else out.push(cur);
           }}
-          // Build marked-up HTML from original and sorted ranges
-          const sorted = [...highlights].sort((a,b)=>a.start-b.start);
-          let html = "";
-          let cursor = 0;
+          return out;
+        }}
+
+        function rebuildPreview() {{
+          if (highlights.length === 0) {{ preview.textContent = original; return; }}
+          const sorted = highlights.slice().sort((a,b)=>a.start-b.start);
+          let html = '', cursor = 0;
           for (const h of sorted) {{
             const pre = original.slice(cursor, h.start);
             const mid = original.slice(h.start, h.end);
-            html += escapeHtml(pre) + "<mark>" + escapeHtml(mid) + "</mark>";
+            html += escapeHtml(pre) + '<mark>' + escapeHtml(mid) + '</mark>';
             cursor = h.end;
           }}
           html += escapeHtml(original.slice(cursor));
           preview.innerHTML = html;
         }}
 
-        function escapeHtml(s) {{
-          return s
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")
-            .replaceAll('"', "&quot;")
-            .replaceAll("'", "&#039;");
-        }}
-
-        function dedupeAndMerge(ranges) {{
-          // Merge overlapping/adjacent ranges for sanity
-          if (ranges.length === 0) return ranges;
-          const s = ranges.sort((a,b)=>a.start-b.start);
-          const out = [s[0]];
-          for (let i=1;i<s.length;i++) {{
-            const last = out[out.length-1];
-            const cur = s[i];
-            if (cur.start <= last.end) {{
-              last.end = Math.max(last.end, cur.end);
-            }} else {{
-              out.push(cur);
-            }}
-          }}
-          return out;
-        }}
-
         function post() {{
-          // Include text along with offsets to simplify downstream
           const payload = {{
-            highlights: highlights.map(h => ({{...h, text: original.slice(h.start, h.end)}})),
+            highlights: highlights.map(h => ({{...h, text: original.slice(h.start,h.end)}})),
             html: preview.innerHTML
           }};
+          // This works with components.html in modern Streamlit
           if (window.Streamlit && window.Streamlit.setComponentValue) {{
             window.Streamlit.setComponentValue(payload);
           }}
         }}
 
-        addBtn.addEventListener('click', () => {{
+        addBtn.onclick = () => {{
           const off = currentSelectionOffsets();
           if (!off) return;
           highlights.push(off);
-          highlights = dedupeAndMerge(highlights);
+          highlights = mergeRanges(highlights);
           rebuildPreview();
           post();
-        }});
-        clearBtn.addEventListener('click', () => {{
+        }};
+        clearBtn.onclick = () => {{
           highlights = [];
           rebuildPreview();
           post();
-        }});
+        }};
 
-        // Initialize preview and size
+        // initial render and height
         rebuildPreview();
         if (window.Streamlit && window.Streamlit.setFrameHeight) {{
           window.Streamlit.setFrameHeight({height});
@@ -156,7 +150,10 @@ def highlight_widget(text: str, key: str = "hl_1", height: int = 420):
       </script>
     </div>
     """
-    return _html(code, height=height + 40, scrolling=True, key=key)
+
+    # IMPORTANT: Do not pass key / scrolling (prevents TypeError on some builds)
+    return _html(code, height=height + 40)
+
 
 
 def _rerun():
