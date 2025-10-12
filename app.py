@@ -36,8 +36,6 @@ def _read_ws_df(sheet_id, ws_title):
     recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
 
-
-
 def _scroll_top():
     """
     Aggressive scroll-to-top:
@@ -76,7 +74,7 @@ def _scroll_top():
                 }
               } catch(e){}
 
-              // focus anchor (preventScroll true not supported everywhere, but trying helps)
+              // focus anchor
               try {
                 var el = document.getElementById('top');
                 if (el && typeof el.focus === 'function') { el.focus(); }
@@ -84,7 +82,6 @@ def _scroll_top():
             } catch(e){}
           }
 
-          // call several times to survive Streamlit's DOM changes / async loads
           topNow();
           setTimeout(topNow, 50);
           setTimeout(topNow, 150);
@@ -112,6 +109,121 @@ def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
             time.sleep(delay)
             delay *= backoff
     raise RuntimeError(f"Google Sheets API error after retries: {last}")
+
+# ---------- NEW: In-place highlighter (yellow) with **bold** markdown support ----------
+def highlight_editor(summary_md: str, key: str = "hl_editor", height: int = 600):
+    """
+    Renders a contenteditable highlighter:
+      - Converts minimal markdown (**bold**) to HTML client-side
+      - Lets users highlight selections with <mark> (yellow)
+      - Returns the current HTML back to Streamlit when 'Save to app' is clicked
+    Returns:
+        saved_html (str | None)
+    """
+    html = f"""
+    <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height:1.5;">
+      <style>
+        .toolbar {{
+          position: sticky; top: 0; z-index: 10;
+          display: flex; gap: 8px; padding: 8px; margin-bottom: 8px;
+          background: #f7f7f9; border: 1px solid #e6e6ef; border-radius: 8px;
+        }}
+        .toolbar button {{
+          border: 1px solid #d0d0da; border-radius: 8px; padding: 6px 10px; cursor: pointer;
+          background: white;
+        }}
+        .toolbar button:hover {{ background: #f0f0ff; }}
+        #editor {{
+          border: 1px solid #e6e6ef; border-radius: 10px; padding: 12px; 
+          min-height: {height - 88}px;
+          max-height: {height - 24}px;
+          overflow: auto; background: #fff;
+          outline: none; white-space: pre-wrap;
+        }}
+        mark {{ background: yellow; padding: 0 .1em; border-radius: .2em; }}
+        .muted {{ color: #666; font-size: 12px; margin-top: 6px; }}
+      </style>
+
+      <div class="toolbar">
+        <button onclick="applyMark()">Highlight</button>
+        <button onclick="removeMark()">Remove highlight</button>
+        <button onclick="resetFromSource()">Reset</button>
+        <div style="margin-left:auto;"></div>
+        <button onclick="saveToApp()" style="background:#2e6bff;color:white;border-color:#2e6bff;">Save to app</button>
+      </div>
+
+      <div id="editor" contenteditable="true" spellcheck="false"></div>
+      <div class="muted">Tip: select text, click <b>Highlight</b>. Bold markdown (**like this**) is supported.</div>
+
+      <script>
+        // Minimal markdown-to-HTML: **bold** + line breaks
+        function mdToHtml(md) {{
+          const esc = (s) => s.replace(/[&<>]/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;'}}[c]));
+          let t = esc(md).replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+          t = t.replace(/\\r?\\n/g, '<br>');
+          return t;
+        }}
+
+        const sourceMd = {json.dumps(summary_md)};
+        const looksHtml = typeof sourceMd === 'string' && /<\\w+[^>]*>/.test(sourceMd);
+        const sourceHtml = looksHtml ? sourceMd : mdToHtml(sourceMd);
+        const editor = document.getElementById('editor');
+        editor.innerHTML = sourceHtml;
+
+        function getSelectionRangeWithin(el) {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return null;
+          const range = sel.getRangeAt(0);
+          if (!el.contains(range.commonAncestorContainer)) return null;
+          return range;
+        }}
+
+        function wrapRangeWith(range, tagName) {{
+          const wrapper = document.createElement(tagName);
+          try {{
+            range.surroundContents(wrapper);
+          }} catch (e) {{
+            const docFrag = range.extractContents();
+            wrapper.appendChild(docFrag);
+            range.insertNode(wrapper);
+          }}
+          return wrapper;
+        }}
+
+        function applyMark() {{
+          const r = getSelectionRangeWithin(editor);
+          if (!r || r.collapsed) return;
+          wrapRangeWith(r, 'mark');
+        }}
+
+        function removeMark() {{
+          const r = getSelectionRangeWithin(editor);
+          if (!r || r.collapsed) return;
+          const container = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentNode;
+          const mark = container.closest ? container.closest('mark') : null;
+          if (mark && editor.contains(mark)) {{
+            const parent = mark.parentNode;
+            while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+            parent.removeChild(mark);
+          }}
+        }}
+
+        function resetFromSource() {{
+          editor.innerHTML = sourceHtml;
+        }}
+
+        function saveToApp() {{
+          const payload = editor.innerHTML;
+          window.parent.postMessage({{
+            isStreamlitMessage: true,
+            type: 'streamlit:setComponentValue',
+            value: payload
+          }}, '*');
+        }}
+      </script>
+    </div>
+    """
+    return _html(html, height=height, scrolling=True, key=key)
 
 # ================== Google Sheets helpers ==================
 SCOPE = [
@@ -182,7 +294,6 @@ def get_or_create_ws(sh, title, headers=None):
         try:
             existing = _retry_gs(ws.row_values, 1)
         except RuntimeError as e:
-            # Non-fatal: warn and continue. App can still append rows with headers in unknown order.
             st.warning(f"Could not read header row for worksheet '{title}' right now; continuing. ({e})")
             return ws
 
@@ -220,8 +331,9 @@ def init_state():
     if "step" not in st.session_state:
         st.session_state.step = 1
     if "jump_to_top" not in st.session_state:
-        # start at top on first load
         st.session_state.jump_to_top = True
+    if "resp_headers" not in st.session_state:
+        st.session_state.resp_headers = None
 
 init_state()
 
@@ -260,7 +372,6 @@ try:
     st.caption(f"Connected to Google Sheet: **{sh.title}**")
     st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
 except Exception:
-    # non-fatal debug failure
     pass
 
 # ================== Worksheets (create if missing) ==================
@@ -276,20 +387,16 @@ ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
 # Cache the response headers once so we don’t re-read them on every save
-if "resp_headers" not in st.session_state:
+if st.session_state.resp_headers is None:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
-
 
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
-
-
 if admissions.empty:
     st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
     st.stop()
-
 
 # ===== Resume progress for this reviewer (run once per sign-in) =====
 if st.session_state.entered and not st.session_state.get("progress_initialized"):
@@ -328,20 +435,17 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
             st.session_state.case_idx = int(target_idx)
             st.session_state.step = int(target_step)
         else:
-            # All admissions completed by this reviewer
             st.session_state.case_idx = len(admissions)
             st.session_state.step = 1
 
     except Exception as e:
         st.warning(f"Could not auto-resume progress: {e}")
 
-    # Mark done and refresh to land on the right case/step
     st.session_state.progress_initialized = True
     st.session_state.jump_to_top = True
     _scroll_top()
     time.sleep(0.15)
     _rerun()
-
 
 # ================== Current case ==================
 if st.session_state.case_idx >= len(admissions):
@@ -373,7 +477,12 @@ left, right = st.columns([2, 3], gap="large")
 
 with left:
     st.markdown("**Discharge Summary**")
-    st.write(summary)
+    # ---------- NEW: High, scrollable, in-place highlight editor ----------
+    saved_highlight_html = highlight_editor(summary_md=summary, key=f"hl_{case_id}", height=600)
+    if saved_highlight_html:
+        # Store captured HTML in session for save handlers
+        st.session_state[f"highlight_html_{case_id}"] = saved_highlight_html
+        st.success("Highlights captured. Don’t forget to save this step.")
 
 with right:
     if st.session_state.step == 1:
@@ -381,11 +490,6 @@ with right:
     else:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
-
-        # ensure we nudge to top when entering step 2 (defensive)
-        # (we set jump_to_top before rerun on transitions; leave this commented unless needed)
-        # st.session_state.jump_to_top = True
-        # _scroll_top()
 
         if not scr.empty:
             st.markdown("**Serum Creatinine (mg/dL)**")
@@ -423,10 +527,7 @@ if st.session_state.step == 1:
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
-        q_highlight = st.text_area(
-            "Please highlight (paste) any specific text in the note that impacted your conclusion.",
-            height=120, key="q1_highlight"
-        )
+        # REMOVED the old free-text highlight box; we capture HTML from the editor instead
         q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
 
@@ -435,18 +536,20 @@ if st.session_state.step == 1:
     if submitted1:
         try:
             st.session_state.saving1 = True
+            # Pull last captured highlight HTML (if reviewer clicked 'Save to app')
+            highlight_html = st.session_state.get(f"highlight_html_{case_id}", "")
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": q_highlight,
+                "q_highlight": highlight_html,   # store HTML with <mark> and <strong>
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
             }
-            append_dict(ws_resp, row, headers=st.session_state.resp_headers)  # note: updated append_dict below
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
@@ -455,7 +558,6 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
-
 
 else:
     st.subheader("Step 2 — Questions (Full Context)")
@@ -479,8 +581,8 @@ else:
                 "case_id": case_id,
                 "step": 2,
                 "q_aki": q_aki2,
-                "q_highlight": "",
-                "q_rationale": q_reasoning,  # keep if you want both; otherwise drop this field from headers later
+                "q_highlight": "",          # optional: could also persist highlight_html if desired
+                "q_rationale": q_reasoning, # keeping same mapping as your schema
                 "q_confidence": "",
                 "q_reasoning": q_reasoning
             }
@@ -494,7 +596,6 @@ else:
             _rerun()
         finally:
             st.session_state.saving2 = False
-
 
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
@@ -517,6 +618,3 @@ with c3:
         _scroll_top()
         time.sleep(0.18)
         _rerun()
-
-
-
