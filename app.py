@@ -349,23 +349,33 @@ def _open_sheet_cached():
 def get_or_create_ws(sh, title, headers=None):
     """
     Get a worksheet by title; create with headers if missing.
-    Uses _retry_gs around worksheet and worksheet operations to reduce transient failures.
+    Uses _retry_gs around worksheet operations to reduce transient failures.
     """
     try:
-        ws = _retry_gs(sh.worksheet, title)
-    except RuntimeError:
-        # probably not found -> create
-        ws = _retry_gs(sh.add_worksheet, title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
+        # Try to open (may raise WorksheetNotFound directly)
+        ws = sh.worksheet(title)  # don't wrap so we can catch the specific exception
+    except WorksheetNotFound:
+        # Create if missing
+        ws = _retry_gs(
+            sh.add_worksheet,
+            title=title,
+            rows=1000,
+            cols=max(10, (len(headers) if headers else 10)),
+        )
         if headers:
             _retry_gs(ws.update, [headers])
+    except APIError as e:
+        # Transient error when fetching worksheet -> retry the open once via _retry_gs
+        ws = _retry_gs(sh.worksheet, title)
 
     # Ensure header row exists and merge non-destructively
     if headers:
         try:
             existing = _retry_gs(ws.row_values, 1)
-        except RuntimeError as e:
-            # Non-fatal: warn and continue. App can still append rows with headers in unknown order.
-            st.warning(f"Could not read header row for worksheet '{title}' right now; continuing. ({e})")
+        except APIError as e:
+            st.warning(
+                f"Could not read header row for worksheet '{title}' right now; continuing. ({e})"
+            )
             return ws
 
         if not existing:
@@ -378,7 +388,9 @@ def get_or_create_ws(sh, title, headers=None):
             if ws.col_count < len(merged):
                 _retry_gs(ws.resize, rows=ws.row_count, cols=len(merged))
             _retry_gs(ws.update, "A1", [merged])
+
     return ws
+
 
 def ws_to_df(ws):
     recs = _retry_gs(ws.get_all_records)
