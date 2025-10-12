@@ -2,6 +2,9 @@ import os
 import json
 import time
 from datetime import datetime
+from streamlit import components
+from streamlit.components.v1 import html as _html
+
 
 import pandas as pd
 import streamlit as st
@@ -223,7 +226,8 @@ def highlight_editor(summary_md: str, key: str = "hl_editor", height: int = 600)
       </script>
     </div>
     """
-    return _html(html, height=height, scrolling=True, key=key)
+    return components.html(html, height=height, scrolling=True, key=key)
+
 
 # ================== Google Sheets helpers ==================
 SCOPE = [
