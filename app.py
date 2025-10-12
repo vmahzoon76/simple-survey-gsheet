@@ -54,156 +54,141 @@ from streamlit.components.v1 import html as _html
 import json
 import urllib.parse
 
-def highlight_widget_inside_form(text: str, case_id: str, height: int = 260):
+import html as _py_html
+from streamlit.components.v1 import html as _html
+import json
+
+def highlight_widget(text: str, case_id: str, height: int = 280):
     """
-    Highlighter for use INSIDE a Streamlit form.
-    - Shows a selection box and a 'live' highlighted view with identical styling.
-    - Auto-syncs the <mark>...<mark> HTML to the parent URL as ?hl_<case_id>=...
-      after every change AND when the 'Save Step 1' button is clicked.
+    One-box highlighter for *inside* a Streamlit form.
+    - Buttons at the top.
+    - Selection and preview are the same box.
+    - Auto-syncs to URL query param ?hl_<case_id>=<urlencoded html> after every change.
     """
     safe_text = _py_html.escape(text)
     safe_text_json = json.dumps(safe_text)
     qp_key = f"hl_{case_id}"
 
     code = f"""
-    <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
-      <!-- Selection box -->
-      <div id="box"
+    <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;">
+      <!-- Buttons at top -->
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <button id="addBtn" type="button">Add selection</button>
+        <button id="clearBtn" type="button">Clear</button>
+      </div>
+
+      <!-- Single viewer: selection + live highlights -->
+      <div id="viewer"
            style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:{height}px;overflow:auto;"></div>
-
-      <!-- Looks identical to the box above (so they appear as one) -->
-      <div id="preview"
-           style="border:1px solid #ddd;border-top:0;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:{height}px;overflow:auto;border-radius:0 0 8px 8px;"></div>
-
-      <div style="margin:6px 0 10px 0; font-size:12px; color:#666;">
-        Select text in the top box, then click <b>Add selection</b>. You can add multiple. Clear if needed.
-      </div>
-
-      <div style="display:flex; gap:8px; margin-bottom:4px;">
-        <button id="addBtn">Add selection</button>
-        <button id="clearBtn">Clear</button>
-      </div>
 
       <script>
         const original = {safe_text_json};
         const qpKey = {json.dumps(qp_key)};
-
-        const box = document.getElementById('box');
-        const preview = document.getElementById('preview');
+        const viewer = document.getElementById('viewer');
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
 
-        box.textContent = original;
-
-        let highlights = [];
-
-        function currentSelectionOffsets() {{
-          const sel = window.getSelection();
-          if (!sel || sel.rangeCount === 0) return null;
-          const range = sel.getRangeAt(0);
-          if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
-
-          // Measure offsets against plain text (top box is plain text)
-          const preRange = document.createRange();
-          preRange.setStart(box, 0);
-          preRange.setEnd(range.startContainer, range.startOffset);
-          const start = preRange.toString().length;
-          const len = range.toString().length;
-          return len > 0 ? {{start, end: start + len}} : null;
-        }}
+        // Maintain highlight ranges as offsets over the *plain* original text.
+        let ranges = [];
 
         function escapeHtml(s) {{
-          return s
-            .replaceAll('&','&amp;').replaceAll('<','&lt;')
-            .replaceAll('>','&gt;').replaceAll('"','&quot;')
-            .replaceAll("'",'&#039;');
+          return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
+                  .replaceAll('>','&gt;').replaceAll('"','&quot;')
+                  .replaceAll("'",'&#039;');
         }}
 
-        function mergeRanges(ranges) {{
-          if (ranges.length===0) return [];
-          const s = ranges.slice().sort((a,b)=>a.start-b.start);
-          const out = [s[0]];
-          for (let i=1;i<s.length;i++) {{
-            const last = out[out.length-1], cur = s[i];
-            if (cur.start <= last.end) last.end = Math.max(last.end, cur.end);
+        function render() {{
+          if (!ranges.length) {{
+            viewer.innerHTML = escapeHtml(original);
+          }} else {{
+            const rs = ranges.slice().sort((a,b)=>a.start-b.start);
+            let html='', cur=0;
+            for (const r of rs) {{
+              html += escapeHtml(original.slice(cur, r.start));
+              html += '<mark>' + escapeHtml(original.slice(r.start, r.end)) + '</mark>';
+              cur = r.end;
+            }}
+            html += escapeHtml(original.slice(cur));
+            viewer.innerHTML = html;
+          }}
+          syncToUrl();  // auto-sync after every render
+        }}
+
+        function syncToUrl() {{
+          try {{
+            const html = viewer.innerHTML;
+            const u = new URL(window.parent.location.href);
+            u.searchParams.set(qpKey, encodeURIComponent(html));
+            window.parent.history.replaceState(null, '', u.toString());
+          }} catch(e) {{ /* ignore */ }}
+        }}
+
+        // Merge overlapping/adjacent
+        function merge(rs) {{
+          if (!rs.length) return rs;
+          rs.sort((a,b)=>a.start-b.start);
+          const out=[rs[0]];
+          for (let i=1;i<rs.length;i++) {{
+            const last=out[out.length-1], cur=rs[i];
+            if (cur.start <= last.end) last.end=Math.max(last.end, cur.end);
             else out.push(cur);
           }}
           return out;
         }}
 
-        function buildHtml() {{
-          if (highlights.length === 0) return escapeHtml(original);
-          const sorted = highlights.slice().sort((a,b)=>a.start-b.start);
-          let html = '', cursor = 0;
-          for (const h of sorted) {{
-            const pre = original.slice(cursor, h.start);
-            const mid = original.slice(h.start, h.end);
-            html += escapeHtml(pre) + '<mark>' + escapeHtml(mid) + '</mark>';
-            cursor = h.end;
-          }}
-          html += escapeHtml(original.slice(cursor));
-          return html;
-        }}
+        // Compute selection offsets relative to the *displayed* text (marks ignored via toString)
+        function getSelectionOffsets() {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount===0) return null;
+          const rng = sel.getRangeAt(0);
+          if (!viewer.contains(rng.startContainer) || !viewer.contains(rng.endContainer)) return null;
 
-        function syncToApp(html) {{
-          try {{
-            const u = new URL(window.parent.location.href);
-            u.searchParams.set(qpKey, encodeURIComponent(html));
-            window.parent.history.replaceState(null, '', u.toString());
-          }} catch (e) {{
-            console.error('Sync failed:', e);
-          }}
-        }}
-
-        function refresh() {{
-          const html = buildHtml();
-          preview.innerHTML = html;
-          syncToApp(html);
+          const pre = document.createRange();
+          pre.setStart(viewer, 0);
+          pre.setEnd(rng.startContainer, rng.startOffset);
+          const start = pre.toString().length;
+          const len = rng.toString().length;
+          return len>0 ? {{start, end:start+len}} : null;
         }}
 
         addBtn.onclick = () => {{
-          const off = currentSelectionOffsets();
+          const off = getSelectionOffsets();
           if (!off) return;
-          highlights.push(off);
-          highlights = mergeRanges(highlights);
-          refresh();
+          ranges.push(off);
+          ranges = merge(ranges);
+          render();
         }};
 
         clearBtn.onclick = () => {{
-          highlights = [];
-          refresh();
+          ranges = [];
+          render();
         }};
 
-        // First paint
-        preview.innerHTML = escapeHtml(original);
-        if (window.Streamlit && window.Streamlit.setFrameHeight) {{
-          window.Streamlit.setFrameHeight({height}*2 + 70);
-        }}
+        // Initial paint
+        render();
 
-        // Also auto-sync again when any button with 'Save Step 1' is clicked in parent
-        // (works even inside Streamlit forms)
-        const observer = new MutationObserver(() => {{
+        // Ensure a final sync right before parent "Save Step 1" is clicked
+        const hookSave = () => {{
           try {{
-            const buttons = window.parent.document.querySelectorAll('button');
-            buttons.forEach(btn => {{
-              if (btn.__hl_hooked__) return;
-              if ((btn.textContent || '').includes('Save Step 1')) {{
-                btn.__hl_hooked__ = true;
-                btn.addEventListener('click', () => {{
-                  // force a last sync right before submit triggers a rerun
-                  syncToApp(preview.innerHTML);
-                }}, {{capture:true}});
+            const btns = window.parent.document.querySelectorAll('button');
+            btns.forEach(b => {{
+              if (b.__hl_hooked__) return;
+              if ((b.textContent||'').includes('Save Step 1')) {{
+                b.__hl_hooked__ = true;
+                b.addEventListener('click', () => syncToUrl(), {{capture:true}});
               }}
             }});
           }} catch(e) {{}}
-        }});
+        }};
         try {{
-          observer.observe(window.parent.document.body, {{childList: true, subtree: true}});
+          const mo = new MutationObserver(hookSave);
+          mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
+          hookSave();
         }} catch(e) {{}}
       </script>
     </div>
     """
-    return _html(code, height=height*2 + 100)
+    return _html(code, height=height + 80)
 
 
 
