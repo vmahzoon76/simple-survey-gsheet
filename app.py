@@ -551,41 +551,60 @@ st.markdown("---")
 
 # ================== Questions & Saving ==================
 # ================== Step 1 ==================
+# ================== Step 1 ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
-    # ---- Move highlighter OUTSIDE the form ----
+    # ---- Highlight widget ----
     st.markdown("**Highlight the exact text that influenced your conclusion**")
     hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
+
+    # Persist the latest highlight in session state
     if isinstance(hl_val, dict) and hl_val.get("highlights"):
+        st.session_state[f"hl_{case_id}"] = hl_val
         with st.expander("Your selected highlights (preview)"):
             st.markdown(hl_val["html"], unsafe_allow_html=True)
+    elif f"hl_{case_id}" in st.session_state:
+        hl_val = st.session_state[f"hl_{case_id}"]  # reuse previous value
 
-    # ---- Then start your Streamlit form ----
+    # ---- Form ----
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
-        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
+        q_rationale = st.text_area(
+            "Please provide a brief rationale for your assessment.",
+            height=140, key="q1_rationale"
+        )
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
+    # ---- Save ----
     if submitted1:
         try:
             st.session_state.saving1 = True
+
+            # Choose which form to store (HTML or JSON)
             hl_json = json.dumps(hl_val["highlights"]) if isinstance(hl_val, dict) else "[]"
+            hl_html = hl_val.get("html", "") if isinstance(hl_val, dict) else ""
+
+            # Save HTML instead of JSON (optional)
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": hl_json,
+                # you can swap these two lines if you prefer HTML:
+                "q_highlight": hl_html,    # << store HTML highlight string
+                # "q_highlight": hl_json,  # << or keep JSON version
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
             }
+
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
             st.session_state.step = 2
@@ -595,6 +614,7 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 
 
