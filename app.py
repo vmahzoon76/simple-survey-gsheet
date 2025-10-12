@@ -88,7 +88,7 @@ def inline_highlighter(text: str, case_id: str, height: int = 560):
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
         const qpKey = {json.dumps(qp_key)};
-        let ranges = []; // [{start,end} in text offsets]
+        let ranges = []; // [{{start,end}} in text offsets]  <-- braces escaped
 
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
@@ -182,6 +182,7 @@ def inline_highlighter(text: str, case_id: str, height: int = 560):
     </div>
     """
     _html(code, height=height + 70)
+
 
 
 def highlight_widget_inside_form(text: str, case_id: str, height: int = 280):
