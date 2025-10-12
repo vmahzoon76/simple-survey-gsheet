@@ -1,4 +1,3 @@
-consider this code: 
 
 
 
@@ -789,4 +788,3 @@ with c3:
 
 
 
-If reviewer 1 writes in a specific sheet and reviewer 2 in another, would that solve the problem? how to do it in the code? do it in a simple way and take care of everything
