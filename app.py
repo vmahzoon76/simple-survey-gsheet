@@ -449,56 +449,109 @@ with right:
 
 st.markdown("---")
 
-# ================== Questions & Saving ==================
+from html import escape
+from streamlit_js_eval import streamlit_js_eval
+
+def _render_marked_by_spans(text, spans):
+    if not spans:
+        return f"<div style='white-space:pre-wrap; line-height:1.4'>{escape(text)}</div>"
+    spans = sorted(spans, key=lambda s: s["start"])
+    out, cur, n = [], 0, len(text)
+    for s in spans:
+        a = max(0, min(n, int(s["start"])))
+        b = max(0, min(n, int(s["end"])))
+        if a > cur:
+            out.append(escape(text[cur:a]))
+        out.append(f"<mark>{escape(text[a:b])}</mark>")
+        cur = b
+    if cur < n:
+        out.append(escape(text[cur:]))
+    return f"<div style='white-space:pre-wrap; line-height:1.4'>{''.join(out)}</div>"
+
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
+    # Keep a per-case highlight list in session
+    hl_key = f"highlights_{case_id}"
+    if hl_key not in st.session_state:
+        st.session_state[hl_key] = []  # list of dicts: {start, end, text}
 
-    # Build sentence inventory once per case (cache in session to avoid rework)
-    if f"sents_{case_id}" not in st.session_state:
-        sents = _split_sentences_with_spans(summary)
-        st.session_state[f"sents_{case_id}"] = sents
-    else:
-        sents = st.session_state[f"sents_{case_id}"]
-
-    # Labels for multiselect
-    sent_labels = [
-        f"S{i:02d} — {s['text'][:100].replace('\n',' ')}" + ("…" if len(s['text']) > 100 else "")
-        for i, s in enumerate(sents)
-    ]
-    id_by_label = {lbl: sents[i]["id"] for i, lbl in enumerate(sent_labels)}
-    sent_by_id = {s["id"]: s for s in sents}
-
-    with st.form("step1_form", clear_on_submit=False):
+    with st.form("step1_form_mouse", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
 
-        st.markdown("**Highlight key evidence (pick one or more sentences)**")
-        # Quick controls (optional)
-        colA, colB = st.columns([1,1])
-        with colA:
-            if st.form_submit_button("Select All", use_container_width=True):
-                st.session_state["q1_sel_labels"] = sent_labels
-        with colB:
-            if st.form_submit_button("Clear", use_container_width=True):
-                st.session_state["q1_sel_labels"] = []
+        st.markdown("**Select any part of the text with your mouse, then click ‘Add highlight’**")
 
-        sel_labels = st.multiselect(
-            "These will be highlighted in yellow below and saved.",
-            options=sent_labels,
-            default=st.session_state.get("q1_sel_labels", []),
-            key="q1_sel_labels"
+        # Read-only textarea shows the raw text and lets us read exact selectionStart/End
+        ta_id = f"ds_textarea_{case_id}"
+        st.text_area(
+            "Discharge summary (select any span with the mouse)",
+            value=summary,
+            height=300,
+            key=f"ta_{case_id}",
+            help="Drag to select text. Then click ‘Add highlight’ below.",
+            disabled=True  # read-only but still selectable; selectionStart/End remain available
         )
 
-        # Map selection back to sentence dicts
-        selected_ids = [id_by_label[lbl] for lbl in sel_labels]
-        selected_spans = [sent_by_id[i] for i in selected_ids]
+        # Buttons row
+        col1, col2, col3 = st.columns([1,1,2])
+        with col1:
+            add_clicked = st.form_submit_button("Add highlight ✚")
+        with col2:
+            clear_clicked = st.form_submit_button("Clear all ⟲")
 
-        # Live preview with <mark> highlighting
-        st.markdown("**Preview with highlights**")
-        st.markdown(_render_marked(summary, selected_spans), unsafe_allow_html=True)
+        # When Add is clicked, fetch selectionStart/End via tiny JS
+        if add_clicked:
+            # Query selection from the *first* textarea on the page with our known key.
+            # Streamlit renders textareas as <textarea data-testid="stTextArea">; we use the
+            # last textarea on the page which corresponds to this widget instance.
+            sel_start = streamlit_js_eval(js_expressions="""
+                (function(){
+                  const areas = Array.from(document.querySelectorAll('textarea'));
+                  const target = areas[areas.length - 1]; // the one we just rendered
+                  if (!target) return -1;
+                  return target.selectionStart ?? -1;
+                })();
+            """, key=f"sel_start_{case_id}")
+            sel_end = streamlit_js_eval(js_expressions="""
+                (function(){
+                  const areas = Array.from(document.querySelectorAll('textarea'));
+                  const target = areas[areas.length - 1];
+                  if (!target) return -1;
+                  return target.selectionEnd ?? -1;
+                })();
+            """, key=f"sel_end_{case_id}")
 
+            try:
+                sel_start = int(sel_start)
+                sel_end = int(sel_end)
+            except Exception:
+                sel_start = sel_end = -1
+
+            if 0 <= sel_start < sel_end <= len(summary):
+                frag = summary[sel_start:sel_end]
+                st.session_state[hl_key].append({
+                    "start": sel_start,
+                    "end": sel_end,
+                    "text": frag
+                })
+                st.success("Highlight added.")
+            else:
+                st.warning("Please select some text inside the box before clicking ‘Add highlight’.")
+
+        if clear_clicked:
+            st.session_state[hl_key] = []
+            st.info("All highlights cleared.")
+
+        # Live preview with yellow <mark>
+        st.markdown("**Preview**")
+        st.markdown(
+            _render_marked_by_spans(summary, st.session_state[hl_key]),
+            unsafe_allow_html=True
+        )
+
+        # Rationale + confidence
         q_rationale = st.text_area("Brief rationale for your assessment.", height=140, key="q1_rationale")
         q_conf = st.slider("Confidence (1–5)", 1, 5, 3, key="q1_conf")
 
@@ -507,12 +560,12 @@ if st.session_state.step == 1:
     if submitted1:
         try:
             st.session_state.saving1 = True
-            # Persist as JSON (ids + text + spans) for auditability & re-rendering later
             highlight_payload = {
                 "case_id": case_id,
                 "reviewer_id": st.session_state.reviewer_id,
-                "selected": [{"id": s["id"], "text": s["text"], "start": s["start"], "end": s["end"]} for s in selected_spans],
-                "version": 1
+                "selected": st.session_state[hl_key],  # [{start,end,text}, ...]
+                "version": 2,
+                "mode": "freeform_mouse_selection"
             }
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
@@ -527,6 +580,7 @@ if st.session_state.step == 1:
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
+            # advance
             st.session_state.step = 2
             st.session_state.jump_to_top = True
             _scroll_top()
@@ -534,6 +588,7 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 else:
     st.subheader("Step 2 — Questions (Full Context)")
