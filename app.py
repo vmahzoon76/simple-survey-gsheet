@@ -470,10 +470,11 @@ def _render_marked_by_spans(text, spans):
 
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
-    # Keep a per-case highlight list in session
+
+    # keep highlights per case
     hl_key = f"highlights_{case_id}"
     if hl_key not in st.session_state:
-        st.session_state[hl_key] = []  # list of dicts: {start, end, text}
+        st.session_state[hl_key] = []  # list of {start,end,text}
 
     with st.form("step1_form_mouse", clear_on_submit=False):
         q_aki = st.radio(
@@ -481,47 +482,57 @@ if st.session_state.step == 1:
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
 
-        st.markdown("**Select any part of the text with your mouse, then click ‘Add highlight’**")
+        st.markdown("**Select any part of the text with your mouse, then click ‘Add highlight’.**")
 
-        # Read-only textarea shows the raw text and lets us read exact selectionStart/End
+        # Render a selectable, read-only textarea via HTML (NOT disabled)
         ta_id = f"ds_textarea_{case_id}"
-        st.text_area(
-            "Discharge summary (select any span with the mouse)",
-            value=summary,
-            height=300,
-            key=f"ta_{case_id}",
-            help="Drag to select text. Then click ‘Add highlight’ below.",
-            disabled=True  # read-only but still selectable; selectionStart/End remain available
-        )
+        _html(f"""
+            <div>
+              <textarea id="{ta_id}"
+                        readonly
+                        style="
+                          width:100%;
+                          min-height:300px;
+                          resize:vertical;
+                          white-space:pre-wrap;
+                          padding:0.75rem;
+                          border-radius:0.5rem;
+                          border:1px solid rgba(49,51,63,0.2);
+                          background:#f6f8fb;
+                          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+                          line-height:1.4;
+                        ">{escape(summary)}</textarea>
+            </div>
+        """, height=0)
 
-        # Buttons row
-        col1, col2, col3 = st.columns([1,1,2])
+        col1, col2, _ = st.columns([1,1,2])
         with col1:
             add_clicked = st.form_submit_button("Add highlight ✚")
         with col2:
             clear_clicked = st.form_submit_button("Clear all ⟲")
 
-        # When Add is clicked, fetch selectionStart/End via tiny JS
         if add_clicked:
-            # Query selection from the *first* textarea on the page with our known key.
-            # Streamlit renders textareas as <textarea data-testid="stTextArea">; we use the
-            # last textarea on the page which corresponds to this widget instance.
-            sel_start = streamlit_js_eval(js_expressions="""
-                (function(){
-                  const areas = Array.from(document.querySelectorAll('textarea'));
-                  const target = areas[areas.length - 1]; // the one we just rendered
-                  if (!target) return -1;
-                  return target.selectionStart ?? -1;
-                })();
-            """, key=f"sel_start_{case_id}")
-            sel_end = streamlit_js_eval(js_expressions="""
-                (function(){
-                  const areas = Array.from(document.querySelectorAll('textarea'));
-                  const target = areas[areas.length - 1];
-                  if (!target) return -1;
-                  return target.selectionEnd ?? -1;
-                })();
-            """, key=f"sel_end_{case_id}")
+            # Read selectionStart / selectionEnd from our specific textarea by id
+            sel_start = streamlit_js_eval(
+                js_expressions=f"""
+                    (function(){{
+                      const el = document.getElementById("{ta_id}");
+                      if (!el) return -1;
+                      return el.selectionStart ?? -1;
+                    }})();
+                """,
+                key=f"sel_start_{case_id}"
+            )
+            sel_end = streamlit_js_eval(
+                js_expressions=f"""
+                    (function(){{
+                      const el = document.getElementById("{ta_id}");
+                      if (!el) return -1;
+                      return el.selectionEnd ?? -1;
+                    }})();
+                """,
+                key=f"sel_end_{case_id}"
+            )
 
             try:
                 sel_start = int(sel_start)
@@ -531,27 +542,18 @@ if st.session_state.step == 1:
 
             if 0 <= sel_start < sel_end <= len(summary):
                 frag = summary[sel_start:sel_end]
-                st.session_state[hl_key].append({
-                    "start": sel_start,
-                    "end": sel_end,
-                    "text": frag
-                })
+                st.session_state[hl_key].append({"start": sel_start, "end": sel_end, "text": frag})
                 st.success("Highlight added.")
             else:
                 st.warning("Please select some text inside the box before clicking ‘Add highlight’.")
-
+        
         if clear_clicked:
             st.session_state[hl_key] = []
             st.info("All highlights cleared.")
 
-        # Live preview with yellow <mark>
         st.markdown("**Preview**")
-        st.markdown(
-            _render_marked_by_spans(summary, st.session_state[hl_key]),
-            unsafe_allow_html=True
-        )
+        st.markdown(_render_marked_by_spans(summary, st.session_state[hl_key]), unsafe_allow_html=True)
 
-        # Rationale + confidence
         q_rationale = st.text_area("Brief rationale for your assessment.", height=140, key="q1_rationale")
         q_conf = st.slider("Confidence (1–5)", 1, 5, 3, key="q1_conf")
 
@@ -572,15 +574,14 @@ if st.session_state.step == 1:
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
-                "q_aki": q_aki,
+                "q_aki": st.session_state["q1_aki"],
                 "q_highlight": json.dumps(highlight_payload, ensure_ascii=False),
-                "q_rationale": q_rationale,
-                "q_confidence": q_conf,
+                "q_rationale": st.session_state["q1_rationale"],
+                "q_confidence": st.session_state["q1_conf"],
                 "q_reasoning": ""
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
-            # advance
             st.session_state.step = 2
             st.session_state.jump_to_top = True
             _scroll_top()
@@ -588,6 +589,7 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 
 else:
