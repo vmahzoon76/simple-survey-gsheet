@@ -5,6 +5,8 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 from streamlit.components.v1 import html as _html
+import html
+from streamlit_js_eval import streamlit_js_eval
 
 # Optional Google Sheets support
 USE_GSHEETS = True
@@ -288,9 +290,6 @@ st.caption(
 st.markdown(f"### {case_id} — {title}")
 
 # ================== HIGHLIGHT UTILITIES ==================
-import html
-from streamlit_js_eval import streamlit_js_eval  # pip install streamlit-js-eval
-
 def _merge_overlaps(spans):
     if not spans: return []
     spans = sorted(spans, key=lambda s: (s["start"], s["end"]))
@@ -332,72 +331,37 @@ with left:
     summary_html = _render_with_highlights(summary, st.session_state[hl_key])
     st.markdown(summary_html, unsafe_allow_html=True)
 
-    # Hidden store to persist the latest selection JSON across blur/reruns
-    st.markdown("<pre id='hl_store' style='display:none'></pre>", unsafe_allow_html=True)
-
-    # Capture selection on mouseup and write it to #hl_store (NOT a global var)
-    _html("""
-<script>
-(function(){
-  const box = document.getElementById('sum');
-  const store = document.getElementById('hl_store');
-  if (!box || !store) return;
-
-  function getOffsets(rng){
-    const pre = document.createRange();
-    pre.selectNodeContents(box);
-    pre.setEnd(rng.startContainer, rng.startOffset);
-    const start = pre.toString().length;
-    const text  = rng.toString();
-    return {text, start, end: start + text.length};
-  }
-
-  box.addEventListener('mouseup', function(){
-    try{
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) { store.textContent = ""; return; }
-      const rng = sel.getRangeAt(0);
-      if (!box.contains(rng.commonAncestorContainer)) { store.textContent = ""; return; }
-      const payload = getOffsets(rng);
-      if (payload.text && payload.text.length > 0) {
-        store.textContent = JSON.stringify(payload);
-      } else {
-        store.textContent = "";
-      }
-    }catch(e){ store.textContent = ""; }
-  }, false);
-})();
-</script>
-""", height=0)
-
     colA, colB = st.columns([1, 3])
     with colA:
-        add_clicked = st.button("➕ Add selection", help="Select text inside the summary box, release mouse, then click")
+        add_clicked = st.button("➕ Add selection", help="Select any text in the box, then click")
 
     if add_clicked:
-        # Read the stored selection JSON string from #hl_store
-        raw = streamlit_js_eval(
-            js_expressions="(function(){var el=document.getElementById('hl_store'); return el?el.textContent:''})()",
-            key=f"read_store_{case_id}"
-        )
-        if isinstance(raw, str) and raw.strip():
-            try:
-                sel = json.loads(raw)
-            except Exception:
-                sel = None
-        else:
-            sel = None
-
+        sel = streamlit_js_eval(js_expressions="""
+(() => {
+  const box = document.getElementById('sum');
+  if (!box) return null;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const rng = sel.getRangeAt(0);
+  const intersects = box.contains(rng.commonAncestorContainer);
+  if (!intersects) return null;
+  const pre = document.createRange();
+  pre.selectNodeContents(box);
+  pre.setEnd(rng.startContainer, rng.startOffset);
+  const start = pre.toString().length;
+  const text = rng.toString();
+  if (!text) return null;
+  return {text, start, end: start + text.length};
+})()
+""", key=f"get_sel_{case_id}")
         if sel and isinstance(sel, dict) and sel.get("text"):
             st.session_state[hl_key].append(sel)
             st.session_state[hl_key] = _merge_overlaps(st.session_state[hl_key])
             _rerun()
-        else:
-            st.warning("No selection detected. Select text in the summary (release mouse), then click Add selection.")
 
     # Manage highlights
     if st.session_state[hl_key]:
-        st.caption(f"{len(st.session_state[hl_key])} highlight(s) ready to save to q_highlight.")
+        st.caption("Your highlights:")
         for i, s in enumerate(st.session_state[hl_key]):
             label = s["text"].strip().replace("\n", " ")
             if len(label) > 40: label = label[:37] + "…"
@@ -417,7 +381,8 @@ with right:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
         case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
-        case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
+        if not case_labs.empty:
+            case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
         scr = case_labs[case_labs["kind"].str.lower() == "scr"].sort_values("timestamp")
         uo = case_labs[case_labs["kind"].str.lower() == "uo"].sort_values("timestamp")
         if not scr.empty:
@@ -452,25 +417,20 @@ if st.session_state.step == 1:
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": json.dumps(st.session_state[hl_key], ensure_ascii=False),
+                "q_highlight": json.dumps(st.session_state.get(hl_key, []), ensure_ascii=False),
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
             }
-            try:
-                append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-            except Exception as e:
-                st.error(f"Saving to Google Sheets failed: {e}")
-                st.stop()
-
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
+            time.sleep(0.5)
             _rerun()
-        finally:
-            pass
+        except Exception as e:
+            st.error(f"An error occurred while saving Step 1: {e}")
+
 else:
     st.subheader("Step 2 — Questions (Full Context)")
     with st.form("step2_form", clear_on_submit=False):
@@ -486,26 +446,20 @@ else:
                 "case_id": case_id,
                 "step": 2,
                 "q_aki": q_aki2,
-                "q_highlight": "",
+                "q_highlight": "", # No highlights in step 2
                 "q_rationale": q_reasoning,
                 "q_confidence": "",
                 "q_reasoning": q_reasoning
             }
-            try:
-                append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-            except Exception as e:
-                st.error(f"Saving to Google Sheets failed: {e}")
-                st.stop()
-
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 2.")
             st.session_state.step = 1
             st.session_state.case_idx += 1
             st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
+            time.sleep(0.5)
             _rerun()
-        finally:
-            pass
+        except Exception as e:
+            st.error(f"An error occurred while saving Step 2: {e}")
 
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
@@ -517,14 +471,10 @@ with c1:
             st.session_state.case_idx -= 1
             st.session_state.step = 2
         st.session_state.jump_to_top = True
-        _scroll_top()
-        time.sleep(0.18)
         _rerun()
 with c3:
     if st.button("Skip ▶"):
         st.session_state.step = 1
         st.session_state.case_idx += 1
         st.session_state.jump_to_top = True
-        _scroll_top()
-        time.sleep(0.18)
         _rerun()
