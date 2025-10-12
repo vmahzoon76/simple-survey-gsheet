@@ -553,64 +553,134 @@ st.markdown("---")
 # ================== Step 1 ==================
 # ================== Step 1 ==================
 # ================== Step 1 ==================
+# ================== Step 1 ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
-    # ---- Highlighter (keep outside the form)
+    # --- Native Highlighter: sentence/line picker (no JS, always saves) ---
     st.markdown("**Highlight the exact text that influenced your conclusion**")
-    hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
 
-    # Cache the latest highlight value so it survives the submit-triggered rerun
-    cache_key = f"hl_cache_{case_id}"
-    if isinstance(hl_val, dict):
-        st.session_state[cache_key] = hl_val
+    import re
 
-    # Optional preview of current/cached highlights
-    _show = hl_val if isinstance(hl_val, dict) else st.session_state.get(cache_key)
-    if isinstance(_show, dict) and _show.get("html"):
-        with st.expander("Your selected highlights (preview)"):
-            st.markdown(_show["html"], unsafe_allow_html=True)
+    def split_into_spans(txt: str):
+        """
+        Split note into spans close to sentences but robust for clinical notes.
+        We first split on blank lines to keep sections together, then within each block
+        split on sentence boundaries. Fall back to lines for odd formats.
+        Returns a list of non-empty trimmed spans.
+        """
+        spans = []
+        # split on double-newlines (section-ish)
+        blocks = re.split(r"\n\s*\n", txt)
+        sent_re = re.compile(r"(?<=[\.\?\!\:])\s+(?=[A-Z\(])")
+        for b in blocks:
+            b = b.strip()
+            if not b:
+                continue
+            # if the block has many short lines, keep as lines
+            lines = [ln.rstrip() for ln in b.splitlines() if ln.strip() != ""]
+            if len(lines) >= 3 and sum(len(x) for x in lines)/max(len(lines),1) < 90:
+                spans.extend(lines)
+            else:
+                # sentence-ish split
+                parts = sent_re.split(b)
+                # make sure we don't emit empty bits
+                for p in parts:
+                    p = p.strip()
+                    if p:
+                        spans.append(p)
+        return spans
 
-    # ---- Now begin the form (this comes AFTER the highlight widget)
+    spans = split_into_spans(summary)
+    # Give each span a stable key
+    span_keys = [f"s{idx}" for idx, _ in enumerate(spans)]
+
+    # Persistent selection per case
+    sel_key = f"hl_sent_sel_{case_id}"
+    if sel_key not in st.session_state:
+        st.session_state[sel_key] = set()
+
+    def _toggle_span(k):
+        s = st.session_state[sel_key]
+        if k in s:
+            s.remove(k)
+        else:
+            s.add(k)
+
+    # Render spans with click-to-mark
+    st.caption("Click a line to toggle highlight. Use the filter to search within the note.")
+    filter_q = st.text_input("Filter (optional)", "", placeholder="e.g., creatinine, oliguria, AKI, rise, urine…")
+    view_spans = [(k, t) for k, t in zip(span_keys, spans) if (filter_q.lower() in t.lower() if filter_q else True)]
+
+    # Two-column compact grid
+    colA, colB = st.columns(2, gap="small")
+    half = (len(view_spans)+1)//2
+    def render_chunk(items, col):
+        with col:
+            for k, t in items:
+                selected = (k in st.session_state[sel_key])
+                style = "background: #fff3cd; border-color:#ffeeba;" if selected else "background: #f8f9fa; border-color:#e9ecef;"
+                if st.button(t, key=f"btn_{k}", use_container_width=True):
+                    _toggle_span(k)
+                # underline selected with a tiny caption
+                st.markdown(
+                    f'<div style="margin-top:-6px;margin-bottom:10px;font-size:11px;color:{"#856404" if selected else "#6c757d"};">'
+                    f'{"✓ selected" if selected else "&nbsp;"}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+    render_chunk(view_spans[:half], colA)
+    render_chunk(view_spans[half:], colB)
+
+    # Build JSON + HTML preview from selected spans
+    selected_idxs = [int(k[1:]) for k in st.session_state[sel_key]]
+    selected_idxs.sort()
+
+    # json structure with indices + text
+    highlights_json_obj = [{"idx": i, "text": spans[i]} for i in selected_idxs]
+    highlights_json = json.dumps(highlights_json_obj, ensure_ascii=False)
+
+    # html preview: wrap selected spans with <mark>, keep original order
+    marked_parts = []
+    for i, t in enumerate(spans):
+        if i in selected_idxs:
+            marked_parts.append(f"<mark>{t}</mark>")
+        else:
+            marked_parts.append(t)
+    preview_html = "<br/>\n".join(marked_parts)
+
+    # Show preview
+    with st.expander("Your selected highlights (preview)"):
+        st.markdown(preview_html, unsafe_allow_html=True)
+        st.caption("This preview will be saved (as JSON by default; you can also store HTML).")
+
+    # ---- Now the form for the rest of Step 1 ----
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
-        q_rationale = st.text_area(
-            "Please provide a brief rationale for your assessment.",
-            height=140, key="q1_rationale"
-        )
-        q_conf = st.slider(
-            "How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf"
-        )
-        submitted1 = st.form_submit_button(
-            "Save Step 1 ✅", disabled=st.session_state.get("saving1", False)
-        )
+        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
+        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
     if submitted1:
         try:
             st.session_state.saving1 = True
-            cached = st.session_state.get(cache_key)
-            if isinstance(cached, dict):
-                hl_json = json.dumps(cached.get("highlights", []))
-                hl_html = cached.get("html", "")
-            else:
-                hl_json = "[]"
-                hl_html = ""
-
+            # Save JSON; optionally also save HTML
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": hl_json,      # JSON offsets + text
+                "q_highlight": highlights_json,     # JSON with indices + text
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": "",
-                # optional if you added this column
-                # "q_highlight_html": hl_html,
+                # If you want to also store HTML, add a column and include:
+                # "q_highlight_html": preview_html,
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
