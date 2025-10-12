@@ -684,23 +684,28 @@ else:
         )
 
         # Conditional fields if AKI == Yes
+        # Conditional fields if AKI == Yes
         q_etiology = ""
         q_stage = ""
         q_onset_exp = ""
-
+        
         if q_aki2 == "Yes":
-            q_etiology = st.selectbox(
-                "What was the reason behind AKI?",
-                ["Pre-renal", "Intrinsic", "Post-renal", "Multi-factorial"], key="q2_etiology"
+            q_etiology = st.text_area(
+                "AKI etiology — choose ONE (Pre-renal / Intrinsic / Post-renal / Multi-factorial) and explain how you concluded it:",
+                key="q2_etiology",
+                height=120
             )
-            q_stage = st.selectbox(
-                "What stage of AKI do you believe the patient reached?",
-                ["Stage 1", "Stage 2", "Stage 3", "Unclear"], key="q2_stage"
+            q_stage = st.text_area(
+                "AKI stage — choose ONE (Stage 1 / Stage 2 / Stage 3 / Unclear) and explain how you concluded it:",
+                key="q2_stage",
+                height=120
             )
             q_onset_exp = st.text_area(
-                "When was the AKI onset? Explain how you concluded it.",
-                key="q2_onset_explanation", height=160
+                "AKI onset — when did it start, and how did you conclude it?",
+                key="q2_onset_explanation",
+                height=160
             )
+
 
         submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
 
