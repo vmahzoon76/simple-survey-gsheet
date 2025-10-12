@@ -2,6 +2,7 @@ import os
 import json
 import time
 from datetime import datetime
+import re  # <-- NEW
 
 import pandas as pd
 import streamlit as st
@@ -102,6 +103,19 @@ def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
             time.sleep(delay)
             delay *= backoff
     raise RuntimeError(f"Google Sheets API error after retries: {last}")
+
+# ---- NEW: minimal Markdown -> HTML for bold/italic + line breaks
+def _md_to_html(md: str) -> str:
+    esc = (
+        md.replace("&", "&amp;")
+          .replace("<", "&lt;")
+          .replace(">", "&gt;")
+    )
+    esc = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc)
+    esc = re.sub(r"\*(.+?)\*", r"<em>\1</em>", esc)
+    esc = esc.replace("\n", "<br>")
+    return esc
+# -----------------------------------------------
 
 # ================== Google Sheets helpers ==================
 SCOPE = [
@@ -347,48 +361,61 @@ uo = case_labs[case_labs["kind"].astype(str).str.lower() == "uo"].sort_values("t
 # ================== Layout ==================
 left, right = st.columns([2, 3], gap="large")
 
+# Prepare a variable accessible later for Step 1 save
+quill_html = ""
+
 with left:
     st.markdown("**Discharge Summary**")
-    # render "nice" with Markdown (supports **bold** in your stored text)
-    st.markdown(summary.replace("\n", "  \n"))
+
+    # STEP 1: Editable Quill with bubble toolbar (inline highlight), seeded with Markdown-converted HTML
+    if st.session_state.step == 1:
+        if HAS_QUILL:
+            init_html = _md_to_html(summary)
+            quill_html = st_quill(
+                value=init_html,
+                html=True,
+                theme="bubble",  # inline toolbar near selection
+                key="quill_note",
+                toolbar=[
+                    ["bold", "italic", "underline", "strike"],
+                    [{"background": []}],                        # <-- highlighter color
+                    [{"list": "ordered"}, {"list": "bullet"}],
+                    ["clean"],
+                ],
+            ) or ""
+        else:
+            # Fallback: show plain text when Quill is unavailable
+            quill_html = ""
+            st.text_area("Discharge Summary (no highlighter available)", summary, height=500, key="note_fallback")
+
+    # STEP 2: Show saved highlighted HTML read-only (fallback to MD->HTML if none)
+    else:
+        # get latest Step 1 highlight HTML for this reviewer+case
+        saved_html = ""
+        try:
+            r = responses.copy()
+            if not r.empty:
+                r = r[(r["reviewer_id"].astype(str) == st.session_state.reviewer_id)
+                      & (r["case_id"].astype(str) == case_id)
+                      & (r["step"].astype(str) == "1")]
+                if not r.empty and "q_highlight_html" in r.columns:
+                    # take the last one chronologically if multiple
+                    r["_ts"] = pd.to_datetime(r["timestamp_utc"], errors="coerce")
+                    r = r.sort_values("_ts")
+                    saved_html = str(r.iloc[-1]["q_highlight_html"] or "")
+        except Exception:
+            saved_html = ""
+
+        if not saved_html:
+            saved_html = _md_to_html(summary)
+
+        # Safe render of saved HTML
+        st.markdown(saved_html, unsafe_allow_html=True)
 
 with right:
     if st.session_state.step == 1:
         st.info("Step 1: Narrative only. Do not use structured data.")
-
-        # --- Inline Highlighter (Quill) ---
-        st.markdown("**Highlight directly in the note (select text, then click the highlighter)**")
-        highlighted_html = ""
-        if HAS_QUILL:
-            # Convert plain text into simple HTML with <br> for line breaks; keep raw characters
-            def _escape_html(s: str) -> str:
-                return (
-                    s.replace("&", "&amp;")
-                     .replace("<", "&lt;")
-                     .replace(">", "&gt;")
-                )
-
-            init_html = _escape_html(summary).replace("\n", "<br>")
-            # Provide a toolbar with a highlighter button (background color)
-            quill = st_quill(
-                value=init_html,
-                html=True,
-                placeholder="Select text and click the highlighter icon to mark it in yellow...",
-                key="quill_step1",
-                toolbar=[
-                    ["bold", "italic", "underline", "strike"],
-                    [{"color": []}, {"background": []}],
-                    [{"list": "ordered"}, {"list": "bullet"}],
-                    ["clean"],
-                ],
-            )
-            # quill returns HTML when html=True
-            highlighted_html = quill or ""
-        else:
-            st.warning("Optional dependency 'streamlit-quill' not installed. Falling back to plain text box.")
-            highlighted_html = ""
-        # --- end Highlighter ---
-
+        # NOTE: (previous separate Quill in right pane removed by request)
     else:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
@@ -453,9 +480,8 @@ if st.session_state.step == 1:
             q_highlight_plain = ""
 
             if HAS_QUILL:
-                # Pull the HTML captured in the right pane (stored in session by st_quill)
-                q_highlight_html = st.session_state.get("quill_step1", "") or ""
-                # If you also want a plain-text extraction, you could strip tags here; keeping HTML is enough.
+                # use the left-pane Quill editor as source of truth
+                q_highlight_html = quill_html or ""
             else:
                 q_highlight_plain = q_highlight_fallback
 
@@ -465,12 +491,11 @@ if st.session_state.step == 1:
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                # For compatibility, keep q_highlight as a short text summary (optional).
                 "q_highlight": q_highlight_plain,
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": "",
-                "q_highlight_html": q_highlight_html,   # NEW: store full highlighted HTML
+                "q_highlight_html": q_highlight_html,   # full HTML with highlights + bold
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
