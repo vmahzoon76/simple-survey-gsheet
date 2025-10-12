@@ -1,5 +1,4 @@
 
-Conversation with Gemini
 import os
 import json
 import time
