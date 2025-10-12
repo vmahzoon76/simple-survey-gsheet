@@ -376,37 +376,7 @@ with left:
     st.write(summary)
     # right after st.write(summary) in the `with left:` block
 
-# small instruction so reviewers know what to do
-    st.markdown("*(Select text in the summary and then click **Capture selection** — the highlighted text will be copied into the 'Highlight' field below.)*")
-    
-    # Capture selection button: returns the selected text to Python when clicked
-    sel = _html(
-        """
-        <div style="margin-top:8px;">
-          <button id="capture_sel" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;cursor:pointer;">
-            Capture selection
-          </button>
-          <script>
-            const btn = document.getElementById("capture_sel");
-            btn.addEventListener("click", () => {
-              // get the current page selection
-              const s = window.getSelection().toString();
-              // send it back to Streamlit as the component return value
-              const msg = {isStreamlitMessage: true, type: "streamlit:setComponentValue", value: s};
-              window.parent.postMessage(msg, "*");
-            });
-          </script>
-        </div>
-        """,
-        height=50,
-    )
-    
-    # When sel is non-empty (user clicked and JS sent back selection),
-    # store into session_state so the text_area with key="q1_highlight" gets prefilled.
-    if sel is not None and sel != "":
-        st.session_state["q1_highlight"] = sel
-        # rerun to update the form with the captured text
-        _rerun()
+
 
 
 with right:
