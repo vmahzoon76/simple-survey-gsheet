@@ -857,47 +857,48 @@ else:
 
 
     if submitted2:
-    try:
-        st.session_state.saving2 = True
-
-        # Read Step-2 highlights
-        qp_key2 = f"hl_step2_{case_id}"
-        qp = st.query_params
-        hl_html2 = urllib.parse.unquote(qp.get(qp_key2, "")) if qp_key2 in qp else ""
-
-        # Combine choice + explanation into a single string per column
-        eti_combined   = f"{etiology_choice} — {etiology_expl}".strip(" —") if q_aki2 == "Yes" else ""
-        stage_combined = f"{stage_choice} — {stage_expl}".strip(" —")       if q_aki2 == "Yes" else ""
-
-        row = {
-            "timestamp_utc": datetime.utcnow().isoformat(),
-            "reviewer_id": st.session_state.reviewer_id,
-            "case_id": case_id,
-            "step": 2,
-            "aki": q_aki2,
-            "highlight_html": hl_html2,
-            "rationale": "",                 # Step 2: rationale stays empty
-            "confidence": q_conf2,
-            "reasoning": q_reasoning,        # think-aloud
-            "aki_etiology": eti_combined,
-            "aki_stage": stage_combined,
-            "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
-        }
-        append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-
-        # Clear Step-2 highlight param and advance
         try:
-            st.query_params.pop(qp_key2, None)
-        except Exception:
-            st.query_params.clear()
+            st.session_state.saving2 = True
+    
+            # Read Step-2 highlights
+            qp_key2 = f"hl_step2_{case_id}"
+            qp = st.query_params
+            hl_html2 = urllib.parse.unquote(qp.get(qp_key2, "")) if qp_key2 in qp else ""
+    
+            # Combine choice + explanation into a single string per column
+            eti_combined   = f"{etiology_choice} — {etiology_expl}".strip(" —") if q_aki2 == "Yes" else ""
+            stage_combined = f"{stage_choice} — {stage_expl}".strip(" —")       if q_aki2 == "Yes" else ""
+    
+            row = {
+                "timestamp_utc": datetime.utcnow().isoformat(),
+                "reviewer_id": st.session_state.reviewer_id,
+                "case_id": case_id,
+                "step": 2,
+                "aki": q_aki2,
+                "highlight_html": hl_html2,
+                "rationale": "",                 # Step 2: rationale stays empty
+                "confidence": q_conf2,
+                "reasoning": q_reasoning,        # think-aloud
+                "aki_etiology": eti_combined,
+                "aki_stage": stage_combined,
+                "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
+            }
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+    
+            # Clear Step-2 highlight param and advance
+            try:
+                st.query_params.pop(qp_key2, None)
+            except Exception:
+                st.query_params.clear()
+    
+            st.success("Saved Step 2.")
+            st.session_state.step = 1
+            st.session_state.case_idx += 1
+            st.session_state.jump_to_top = True
+            _scroll_top(); time.sleep(0.25); _rerun()
+        finally:
+            st.session_state.saving2 = False
 
-        st.success("Saved Step 2.")
-        st.session_state.step = 1
-        st.session_state.case_idx += 1
-        st.session_state.jump_to_top = True
-        _scroll_top(); time.sleep(0.25); _rerun()
-    finally:
-        st.session_state.saving2 = False
 
 
 
