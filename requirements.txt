@@ -4,5 +4,4 @@ oauth2client
 pandas
 altair
 streamlit-quill
-markdown
-streamlit-javascript
+streamlit-js-eval
