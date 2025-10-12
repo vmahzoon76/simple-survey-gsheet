@@ -58,6 +58,132 @@ import html as _py_html
 from streamlit.components.v1 import html as _html
 import json
 
+
+def inline_highlighter(text: str, case_id: str, height: int = 560):
+    """
+    Render the *actual* discharge summary as a selectable, live-highlightable box.
+    Highlights appear inline (using <mark>) in the same element.
+    The highlighted HTML is auto-synced to the page URL as ?hl_step1_<case_id>=...
+    so Python can read it on submit (Step 1 only).
+    """
+    safe_text = _py_html.escape(text)
+    qp_key = f"hl_step1_{case_id}"   # step-specific key so Step 2 never sees/keeps it
+
+    code = f"""
+    <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button id="addBtn" type="button">Highlight</button>
+        <button id="clearBtn" type="button">Clear</button>
+      </div>
+
+      <!-- The actual discharge summary text (one box only) -->
+      <div id="text"
+           style="border:1px solid #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
+                  max-height:{height}px; width:100%; box-sizing:border-box;">
+        {safe_text}
+      </div>
+
+      <script>
+        const textEl = document.getElementById('text');
+        const addBtn = document.getElementById('addBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const qpKey = {json.dumps(qp_key)};
+        let ranges = []; // [{start,end} in text offsets]
+
+        function escapeHtml(s) {{
+          return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
+                  .replaceAll('>','&gt;').replaceAll('"','&quot;')
+                  .replaceAll("'",'&#039;');
+        }}
+
+        function merge(rs) {{
+          if (!rs.length) return rs;
+          rs.sort((a,b)=>a.start-b.start);
+          const out=[rs[0]];
+          for (let i=1;i<rs.length;i++) {{
+            const last=out[out.length-1], cur=rs[i];
+            if (cur.start <= last.end) last.end=Math.max(last.end, cur.end);
+            else out.push(cur);
+          }}
+          return out;
+        }}
+
+        function selectionOffsets() {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount===0) return null;
+          const rng = sel.getRangeAt(0);
+          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
+          const pre = document.createRange();
+          pre.setStart(textEl, 0);
+          pre.setEnd(rng.startContainer, rng.startOffset);
+          const start = pre.toString().length;
+          const len = rng.toString().length;
+          return len>0 ? {{start, end:start+len}} : null;
+        }}
+
+        function render() {{
+          const txt = textEl.textContent;
+          if (!ranges.length) {{
+            textEl.innerHTML = escapeHtml(txt);
+          }} else {{
+            const rs = ranges.slice().sort((a,b)=>a.start-b.start);
+            let html='', cur=0;
+            for (const r of rs) {{
+              html += escapeHtml(txt.slice(cur, r.start));
+              html += '<mark>' + escapeHtml(txt.slice(r.start, r.end)) + '</mark>';
+              cur = r.end;
+            }}
+            html += escapeHtml(txt.slice(cur));
+            textEl.innerHTML = html;
+          }}
+          syncToUrl();
+        }}
+
+        function syncToUrl() {{
+          try {{
+            const html = textEl.innerHTML;
+            const u = new URL(window.parent.location.href);
+            u.searchParams.set(qpKey, encodeURIComponent(html));
+            window.parent.history.replaceState(null, '', u.toString());
+          }} catch(e) {{ /* ignore */ }}
+        }}
+
+        addBtn.onclick = () => {{
+          const off = selectionOffsets();
+          if (!off) return;
+          ranges.push(off);
+          ranges = merge(ranges);
+          render();
+        }};
+        clearBtn.onclick = () => {{
+          ranges = [];
+          render();
+        }};
+
+        // Ensure a final sync right before parent "Save Step 1" is clicked
+        const hookSave = () => {{
+          try {{
+            const btns = window.parent.document.querySelectorAll('button');
+            btns.forEach(b => {{
+              if (b.__hl_hooked__) return;
+              if ((b.textContent||'').includes('Save Step 1')) {{
+                b.__hl_hooked__ = true;
+                b.addEventListener('click', () => syncToUrl(), {{capture:true}});
+              }}
+            }});
+          }} catch(e) {{}}
+        }};
+        try {{
+          const mo = new MutationObserver(hookSave);
+          mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
+          hookSave();
+        }} catch(e) {{}}
+      </script>
+    </div>
+    """
+    _html(code, height=height + 70)
+
+
 def highlight_widget_inside_form(text: str, case_id: str, height: int = 280):
     """
     One-box highlighter for *inside* a Streamlit form.
@@ -543,11 +669,12 @@ scr = case_labs[case_labs["kind"].astype(str).str.lower() == "scr"].sort_values(
 uo = case_labs[case_labs["kind"].astype(str).str.lower() == "uo"].sort_values("timestamp")
 
 # ================== Layout ==================
-left, right = st.columns([2, 3], gap="large")
+left, right = st.columns([3, 4], gap="large")
 
 with left:
-    st.markdown("**Discharge Summary**")
-    st.write(summary)
+    st.markdown("**Discharge Summary (highlight directly in the text below)**")
+    inline_highlighter(summary, case_id=case_id, height=560)  # taller box
+
 
 with right:
     if st.session_state.step == 1:
@@ -599,11 +726,7 @@ if st.session_state.step == 1:
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
 
-        st.markdown("**Highlight the exact text that influenced your conclusion**")
-        highlight_widget_inside_form(summary, case_id=case_id, height=260)
-
-        q_rationale = st.text_area("Please provide a brief rationale for your assessment.",
-                                   height=140, key="q1_rationale")
+        # no text area; just confidence
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
 
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
@@ -612,8 +735,8 @@ if st.session_state.step == 1:
         try:
             st.session_state.saving1 = True
 
-            # Read the synced highlights from the URL query params at submit time
-            qp_key = f"hl_{case_id}"
+            # Pull Step-1 highlight HTML from the step-specific query param and save it
+            qp_key = f"hl_step1_{case_id}"
             qp = st.query_params
             hl_html = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
 
@@ -623,15 +746,20 @@ if st.session_state.step == 1:
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": hl_html,     # HTML with <mark>...</mark>
-                "q_rationale": q_rationale,
+                "q_highlight": hl_html,   # <mark>…</mark> saved here
+                "q_rationale": "",        # removed question → save empty
                 "q_confidence": q_conf,
                 "q_reasoning": ""
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
 
-            # clear param so it doesn't leak into the next case
-            st.query_params.clear()
+            # Clear Step-1 highlight param so it never bleeds into Step 2 or next case
+            try:
+                # Streamlit ≥1.30
+                st.query_params.pop(qp_key, None)
+            except Exception:
+                # Older fallback (nuke all)
+                st.query_params.clear()
 
             st.success("Saved Step 1.")
             st.session_state.step = 2
@@ -650,8 +778,13 @@ if st.session_state.step == 1:
 
 
 
+
 else:
     st.subheader("Step 2 — Questions (Full Context)")
+    try:
+        st.query_params.pop(f"hl_step1_{case_id}", None)
+    except Exception:
+        pass
     with st.form("step2_form", clear_on_submit=False):
         q_aki2 = st.radio(
             "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
