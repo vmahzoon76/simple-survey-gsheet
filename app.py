@@ -2,7 +2,6 @@ import os
 import json
 import time
 from datetime import datetime
-import re  # <-- NEW
 
 import pandas as pd
 import streamlit as st
@@ -13,87 +12,43 @@ USE_GSHEETS = True
 try:
     import gspread
     from oauth2client.service_account import ServiceAccountCredentials
-    from gspread.exceptions import APIError, SpreadsheetNotFound, WorksheetNotFound
+    from gspread.exceptions import APIError, SpreadsheetNotFound
 except Exception:
     USE_GSHEETS = False
 
 # Optional Quill-based highlighter
 HAS_QUILL = True
 try:
-    # pip install streamlit-quill
-    from streamlit_quill import st_quill
+    from streamlit_quill import st_quill  # pip install streamlit-quill
 except Exception:
     HAS_QUILL = False
 
 st.set_page_config(page_title="AKI Expert Review", layout="wide")
 st.title("AKI Expert Review")
-# anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
 # -------------------- Helpers --------------------
 def _rerun():
-    """Streamlit rerun helper that works across versions."""
     try:
         st.rerun()
     except AttributeError:
         st.experimental_rerun()
 
-@st.cache_data(ttl=60, show_spinner=False)
-def _read_ws_df(sheet_id, ws_title):
-    sh = _open_sheet_cached()
-    ws = sh.worksheet(ws_title)
-    recs = _retry_gs(ws.get_all_records)
-    return pd.DataFrame(recs)
-
 def _scroll_top():
-    """
-    Aggressive scroll-to-top.
-    """
-    _html(
-        """
+    _html("""
         <script>
         (function(){
-          try { if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; } } catch(e) {}
           function topNow(){
-            try { location.hash = '#top'; } catch(e){}
-            try { window.scrollTo(0,0); } catch(e){}
-            try { document.documentElement && (document.documentElement.scrollTop = 0); } catch(e){}
-            try { document.body && (document.body.scrollTop = 0); } catch(e){}
-            try {
-              if (window.parent && window.parent !== window) {
-                try { window.parent.scrollTo(0,0); } catch(e){}
-                try {
-                  var pdoc = window.parent.document;
-                  if (pdoc) {
-                    pdoc.documentElement && (pdoc.documentElement.scrollTop = 0);
-                    pdoc.body && (pdoc.body.scrollTop = 0);
-                  }
-                } catch(e){}
-              }
-            } catch(e){}
-            try {
-              var el = document.getElementById('top');
-              if (el && typeof el.focus === 'function') { el.focus(); }
-            } catch(e){}
+            window.scrollTo(0,0);
           }
           topNow();
           setTimeout(topNow, 50);
           setTimeout(topNow, 150);
-          setTimeout(topNow, 400);
-          setTimeout(topNow, 900);
-          setTimeout(topNow, 1500);
-          setTimeout(topNow, 3000);
         })();
         </script>
-        """,
-        height=0,
-    )
+        """, height=0)
 
-def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
-    """
-    Retry wrapper for Google Sheets calls to tolerate transient API errors (rate limit / 5xx).
-    Raises RuntimeError after repeated failures so UI shows a clear message.
-    """
+def _retry_gs(func, *args, tries=6, delay=1.0, backoff=1.6, **kwargs):
     last = None
     for _ in range(tries):
         try:
@@ -104,19 +59,6 @@ def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
             delay *= backoff
     raise RuntimeError(f"Google Sheets API error after retries: {last}")
 
-# ---- NEW: minimal Markdown -> HTML for bold/italic + line breaks
-def _md_to_html(md: str) -> str:
-    esc = (
-        md.replace("&", "&amp;")
-          .replace("<", "&lt;")
-          .replace(">", "&gt;")
-    )
-    esc = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc)
-    esc = re.sub(r"\*(.+?)\*", r"<em>\1</em>", esc)
-    esc = esc.replace("\n", "<br>")
-    return esc
-# -----------------------------------------------
-
 # ================== Google Sheets helpers ==================
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
@@ -125,7 +67,6 @@ SCOPE = [
 
 @st.cache_resource(show_spinner=False)
 def _get_client_cached():
-    """Create and cache a gspread client (no args so Streamlit can hash)."""
     if not USE_GSHEETS:
         return None
     try:
@@ -135,7 +76,6 @@ def _get_client_cached():
                 data = json.loads(data)
             creds = ServiceAccountCredentials.from_json_keyfile_dict(data, SCOPE)
         else:
-            # local fallback file
             if not os.path.exists("service_account.json"):
                 return None
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", SCOPE)
@@ -146,49 +86,32 @@ def _get_client_cached():
 
 @st.cache_resource(show_spinner=False)
 def _open_sheet_cached():
-    """Open spreadsheet by ID (stored in st.secrets['gsheet_id']) with retries."""
     sheet_id = st.secrets.get("gsheet_id", "").strip()
     if not sheet_id:
-        raise RuntimeError("Missing gsheet_id in Secrets. Add the Google Sheet ID between /d/ and /edit.")
-
+        raise RuntimeError("Missing gsheet_id in Secrets.")
     client = _get_client_cached()
     if client is None:
-        raise RuntimeError("Google Sheets client not available. Ensure Secrets/service_account or service_account.json is present.")
-
+        raise RuntimeError("Google Sheets client not available.")
     last_err = None
     for i in range(6):
         try:
             return client.open_by_key(sheet_id)
         except SpreadsheetNotFound:
-            raise RuntimeError(
-                "Could not open the Google Sheet by ID. Double-check gsheet_id and share the sheet with the service-account email as Editor."
-            )
+            raise RuntimeError("Could not open the Google Sheet by ID.")
         except APIError as e:
             last_err = e
             time.sleep(1.2 * (i + 1))
     raise RuntimeError(f"Google Sheets API error after retries: {last_err}")
 
 def get_or_create_ws(sh, title, headers=None):
-    """
-    Get a worksheet by title; create with headers if missing.
-    Uses _retry_gs around worksheet and worksheet operations to reduce transient failures.
-    """
     try:
         ws = _retry_gs(sh.worksheet, title)
     except RuntimeError:
-        # probably not found -> create
         ws = _retry_gs(sh.add_worksheet, title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
         if headers:
             _retry_gs(ws.update, [headers])
-
-    # Ensure header row exists and merge non-destructively
     if headers:
-        try:
-            existing = _retry_gs(ws.row_values, 1)
-        except RuntimeError as e:
-            st.warning(f"Could not read header row for worksheet '{title}' right now; continuing. ({e})")
-            return ws
-
+        existing = _retry_gs(ws.row_values, 1)
         if not existing:
             _retry_gs(ws.update, [headers])
         elif existing != headers:
@@ -196,14 +119,8 @@ def get_or_create_ws(sh, title, headers=None):
             for h in headers:
                 if h not in merged:
                     merged.append(h)
-            if ws.col_count < len(merged):
-                _retry_gs(ws.resize, rows=ws.row_count, cols=len(merged))
             _retry_gs(ws.update, "A1", [merged])
     return ws
-
-def ws_to_df(ws):
-    recs = _retry_gs(ws.get_all_records)
-    return pd.DataFrame(recs)
 
 def append_dict(ws, d, headers=None):
     if headers is None:
@@ -221,15 +138,8 @@ def init_state():
         st.session_state.case_idx = 0
     if "step" not in st.session_state:
         st.session_state.step = 1
-    if "jump_to_top" not in st.session_state:
-        st.session_state.jump_to_top = True
 
 init_state()
-
-# perform top scroll early on each render if requested
-if st.session_state.get("jump_to_top"):
-    _scroll_top()
-    st.session_state.jump_to_top = False
 
 # ================== Sign-in ==================
 with st.sidebar:
@@ -240,99 +150,41 @@ with st.sidebar:
             st.session_state.reviewer_id = rid.strip()
             st.session_state.entered = True
             st.session_state.step = 1
-            st.session_state.jump_to_top = True
             _scroll_top()
-            time.sleep(0.25)
             _rerun()
 
 if not st.session_state.entered:
-    st.info("Please sign in with your Reviewer ID to begin.")
+    st.info("Please sign in to begin.")
     st.stop()
 
-# ================== Load data from Google Sheets ==================
+# ================== Load data ==================
 try:
     sh = _open_sheet_cached()
 except RuntimeError as e:
     st.error(str(e))
     st.stop()
 
-# Debug info (optional)
-try:
-    st.caption(f"Connected to Google Sheet: **{sh.title}**")
-    st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
-except Exception:
-    pass
-
-# ================== Worksheets (create if missing) ==================
 adm_headers = ["case_id", "title", "discharge_summary", "weight_kg"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
-# add a new column to capture HTML version of highlights
 resp_headers = [
     "timestamp_utc", "reviewer_id", "case_id", "step",
-    "q_aki", "q_highlight", "q_rationale", "q_confidence", "q_reasoning",
-    "q_highlight_html"   # NEW
+    "q_aki", "q_highlight", "q_rationale", "q_confidence",
+    "q_reasoning", "q_highlight_html"
 ]
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
-admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
-labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
-responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
-
-# Cache the response headers once so we don’t re-read them on every save
-if "resp_headers" not in st.session_state:
-    st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
+admissions = pd.DataFrame(_retry_gs(ws_adm.get_all_records))
+labs = pd.DataFrame(_retry_gs(ws_labs.get_all_records))
+responses = pd.DataFrame(_retry_gs(ws_resp.get_all_records))
 
 if admissions.empty:
-    st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
+    st.error("Admissions sheet is empty.")
     st.stop()
 
-# ===== Resume progress for this reviewer (run once per sign-in) =====
-if st.session_state.entered and not st.session_state.get("progress_initialized"):
-    try:
-        resp = responses.copy()
-        rid = str(st.session_state.reviewer_id)
-        if not resp.empty:
-            resp = resp[resp["reviewer_id"].astype(str) == rid]
-        else:
-            resp = resp
-
-        if not resp.empty and "step" in resp.columns:
-            resp["step"] = pd.to_numeric(resp["step"], errors="coerce").fillna(0).astype(int)
-        else:
-            resp["step"] = []
-
-        completed_ids = set(resp.loc[resp["step"] == 2, "case_id"].astype(str)) if not resp.empty else set()
-        step1_only_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
-
-        target_idx = None
-        target_step = 1
-        for idx, row in admissions.reset_index(drop=True).iterrows():
-            cid = str(row.get("case_id", ""))
-            if cid in completed_ids:
-                continue
-            target_idx = idx
-            target_step = 2 if cid in step1_only_ids else 1
-            break
-
-        if target_idx is not None:
-            st.session_state.case_idx = int(target_idx)
-            st.session_state.step = int(target_step)
-        else:
-            st.session_state.case_idx = len(admissions)
-            st.session_state.step = 1
-    except Exception as e:
-        st.warning(f"Could not auto-resume progress: {e}")
-
-    st.session_state.progress_initialized = True
-    st.session_state.jump_to_top = True
-    _scroll_top()
-    time.sleep(0.15)
-    _rerun()
-
-# ================== Current case ==================
+# ================== Current Case ==================
 if st.session_state.case_idx >= len(admissions):
     st.success("All admissions completed. Thank you!")
     st.stop()
@@ -350,220 +202,92 @@ st.caption(
 )
 st.markdown(f"### {case_id} — {title}")
 
-# Filter labs for this case
-case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
-if not case_labs.empty:
-    case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
-    case_labs["value"] = pd.to_numeric(case_labs["value"], errors="coerce")
-scr = case_labs[case_labs["kind"].astype(str).str.lower() == "scr"].sort_values("timestamp")
-uo = case_labs[case_labs["kind"].astype(str).str.lower() == "uo"].sort_values("timestamp")
-
 # ================== Layout ==================
 left, right = st.columns([2, 3], gap="large")
-
-# Prepare a variable accessible later for Step 1 save
-quill_html = ""
 
 with left:
     st.markdown("**Discharge Summary**")
 
-    # STEP 1: Editable Quill with bubble toolbar (inline highlight), seeded with Markdown-converted HTML
-    if st.session_state.step == 1:
-        if HAS_QUILL:
-            init_html = _md_to_html(summary)
-            quill_html = st_quill(
-                value=init_html,
-                html=True,
-                theme="bubble",  # inline toolbar near selection
-                key="quill_note",
-                toolbar=[
-                    ["bold", "italic", "underline", "strike"],
-                    [{"background": []}],                        # <-- highlighter color
-                    [{"list": "ordered"}, {"list": "bullet"}],
-                    ["clean"],
-                ],
-            ) or ""
-        else:
-            # Fallback: show plain text when Quill is unavailable
-            quill_html = ""
-            st.text_area("Discharge Summary (no highlighter available)", summary, height=500, key="note_fallback")
+    # -------- ONE SINGLE TEXT BOX with Markdown formatting + Highlight --------
+    import markdown
+    def markdown_to_html(md_text: str) -> str:
+        """Convert Markdown (**bold**, lists, etc.) to HTML."""
+        return markdown.markdown(md_text, extensions=["nl2br", "sane_lists"], output_format="html5")
 
-    # STEP 2: Show saved highlighted HTML read-only (fallback to MD->HTML if none)
+    if HAS_QUILL:
+        st.markdown("""
+        <style>
+        .ql-toolbar.ql-snow {
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 5;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        init_html = markdown_to_html(summary)
+        st.markdown("**Highlight directly in the note (select text, then click the highlighter)**")
+
+        quill_html = st_quill(
+            value=init_html,
+            html=True,
+            placeholder="Select text and click the highlighter icon to mark it in yellow...",
+            key="quill_step1",
+            toolbar=[[{"background": []}], ["clean"]],
+        )
     else:
-        # get latest Step 1 highlight HTML for this reviewer+case
-        saved_html = ""
-        try:
-            r = responses.copy()
-            if not r.empty:
-                r = r[(r["reviewer_id"].astype(str) == st.session_state.reviewer_id)
-                      & (r["case_id"].astype(str) == case_id)
-                      & (r["step"].astype(str) == "1")]
-                if not r.empty and "q_highlight_html" in r.columns:
-                    # take the last one chronologically if multiple
-                    r["_ts"] = pd.to_datetime(r["timestamp_utc"], errors="coerce")
-                    r = r.sort_values("_ts")
-                    saved_html = str(r.iloc[-1]["q_highlight_html"] or "")
-        except Exception:
-            saved_html = ""
+        st.warning("Optional dependency 'streamlit-quill' not installed.")
+        st.markdown(summary.replace("\n", "  \n"))
+        quill_html = ""
 
-        if not saved_html:
-            saved_html = _md_to_html(summary)
-
-        # Safe render of saved HTML
-        st.markdown(saved_html, unsafe_allow_html=True)
-
-with right:
-    if st.session_state.step == 1:
-        st.info("Step 1: Narrative only. Do not use structured data.")
-        # NOTE: (previous separate Quill in right pane removed by request)
-    else:
-        st.info("Step 2: Summary + Figures + Tables")
-        import altair as alt
-
-        if not scr.empty:
-            st.markdown("**Serum Creatinine (mg/dL)**")
-            ch_scr = alt.Chart(scr.rename(columns={"timestamp": "time", "value": "scr"})).mark_line(point=True).encode(
-                x=alt.X("time:T", title="Time"),
-                y=alt.Y("scr:Q", title="mg/dL")
-            )
-            st.altair_chart(ch_scr, use_container_width=True)
-            st.caption("Table — SCr:")
-            st.dataframe(scr[["timestamp", "value", "unit"]].rename(columns={"value": "scr"}), use_container_width=True)
-        else:
-            st.warning("No SCr values for this case.")
-
-        if not uo.empty:
-            st.markdown("**Urine Output (mL/kg/h)**" + (f" — weight: {weight} kg" if weight else ""))
-            ch_uo = alt.Chart(uo.rename(columns={"timestamp": "time", "value": "uo"})).mark_line(point=True).encode(
-                x=alt.X("time:T", title="Time"),
-                y=alt.Y("uo:Q", title="mL/kg/h")
-            )
-            ref = pd.DataFrame({"time": [uo["timestamp"].min(), uo["timestamp"].max()], "ref": [0.5, 0.5]})
-            ch_ref = alt.Chart(ref).mark_rule(strokeDash=[6, 6]).encode(x="time:T", y="ref:Q")
-            st.altair_chart(ch_uo + ch_ref, use_container_width=True)
-            st.caption("Table — UO:")
-            st.dataframe(uo[["timestamp", "value", "unit"]].rename(columns={"value": "uo"}), use_container_width=True)
-        else:
-            st.warning("No UO values for this case.")
-
+# ================== Step 1 Form ==================
 st.markdown("---")
+st.subheader("Step 1 — Questions (Narrative Only)")
 
-# ================== Questions & Saving ==================
-if st.session_state.step == 1:
-    st.subheader("Step 1 — Questions (Narrative Only)")
-    with st.form("step1_form", clear_on_submit=False):
-        q_aki = st.radio(
-            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
-            ["Yes", "No"], horizontal=True, key="q1_aki"
-        )
+with st.form("step1_form", clear_on_submit=False):
+    q_aki = st.radio(
+        "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+        ["Yes", "No"], horizontal=True
+    )
+    q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140)
+    q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3)
+    submitted1 = st.form_submit_button("Save Step 1 ✅")
 
-        # If Quill is available, we hide the old free-text highlight box.
-        # If not available, keep the fallback text area.
-        if not HAS_QUILL:
-            q_highlight_fallback = st.text_area(
-                "Highlight (paste) any specific text that impacted your conclusion.",
-                height=120, key="q1_highlight_fallback"
-            )
-        else:
-            q_highlight_fallback = ""
+if submitted1:
+    try:
+        row = {
+            "timestamp_utc": datetime.utcnow().isoformat(),
+            "reviewer_id": st.session_state.reviewer_id,
+            "case_id": case_id,
+            "step": 1,
+            "q_aki": q_aki,
+            "q_highlight": "",
+            "q_rationale": q_rationale,
+            "q_confidence": q_conf,
+            "q_reasoning": "",
+            "q_highlight_html": quill_html or "",
+        }
+        append_dict(ws_resp, row, headers=resp_headers)
+        st.success("Saved Step 1.")
+        st.session_state.step = 2
+        st.session_state.case_idx += 1
+        _scroll_top()
+        time.sleep(0.3)
+        _rerun()
+    except Exception as e:
+        st.error(f"Error saving: {e}")
 
-        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
-        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
-
-        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
-
-    if submitted1:
-        try:
-            st.session_state.saving1 = True
-            # Save either highlighted HTML (preferred) or fallback pasted text
-            q_highlight_html = ""
-            q_highlight_plain = ""
-
-            if HAS_QUILL:
-                # use the left-pane Quill editor as source of truth
-                q_highlight_html = quill_html or ""
-            else:
-                q_highlight_plain = q_highlight_fallback
-
-            row = {
-                "timestamp_utc": datetime.utcnow().isoformat(),
-                "reviewer_id": st.session_state.reviewer_id,
-                "case_id": case_id,
-                "step": 1,
-                "q_aki": q_aki,
-                "q_highlight": q_highlight_plain,
-                "q_rationale": q_rationale,
-                "q_confidence": q_conf,
-                "q_reasoning": "",
-                "q_highlight_html": q_highlight_html,   # full HTML with highlights + bold
-            }
-            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-            st.success("Saved Step 1.")
-            st.session_state.step = 2
-            st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
-            _rerun()
-        finally:
-            st.session_state.saving1 = False
-
-else:
-    st.subheader("Step 2 — Questions (Full Context)")
-    with st.form("step2_form", clear_on_submit=False):
-        q_aki2 = st.radio(
-            "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
-            ["Yes", "No"], horizontal=True, key="q2_aki"
-        )
-        q_reasoning = st.text_area(
-            "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
-            height=180, key="q2_reasoning"
-        )
-        submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
-
-    if submitted2:
-        try:
-            st.session_state.saving2 = True
-            row = {
-                "timestamp_utc": datetime.utcnow().isoformat(),
-                "reviewer_id": st.session_state.reviewer_id,
-                "case_id": case_id,
-                "step": 2,
-                "q_aki": q_aki2,
-                "q_highlight": "",
-                "q_rationale": q_reasoning,  # keep if you want both; otherwise drop this field from headers later
-                "q_confidence": "",
-                "q_reasoning": q_reasoning,
-                "q_highlight_html": "",      # empty for step 2
-            }
-            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-            st.success("Saved Step 2.")
-            st.session_state.step = 1
-            st.session_state.case_idx += 1
-            st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
-            _rerun()
-        finally:
-            st.session_state.saving2 = False
-
-# Navigation helpers
-c1, c2, c3 = st.columns(3)
+# ================== Navigation ==================
+c1, c3 = st.columns(2)
 with c1:
     if st.button("◀ Back"):
-        if st.session_state.step == 2:
-            st.session_state.step = 1
-        elif st.session_state.case_idx > 0:
+        if st.session_state.case_idx > 0:
             st.session_state.case_idx -= 1
-            st.session_state.step = 2
-        st.session_state.jump_to_top = True
-        _scroll_top()
-        time.sleep(0.18)
-        _rerun()
+            _scroll_top()
+            _rerun()
 with c3:
     if st.button("Skip ▶"):
-        st.session_state.step = 1
         st.session_state.case_idx += 1
-        st.session_state.jump_to_top = True
         _scroll_top()
-        time.sleep(0.18)
         _rerun()
