@@ -66,6 +66,7 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
     One-box highlighter rendered as the *actual* discharge summary text.
     Highlights show inline and auto-sync to a step-specific query param:
       ?hl_{step_key}_{case_id}=<urlencoded html>.
+    Supports **bold** markdown (only) rendered to <strong>…</strong>.
     """
     safe_text = _py_html.escape(text)
     qp_key = f"hl_{step_key}_{case_id}"   # step-specific key (e.g., hl_step1_<id> or hl_step2_<id>)
@@ -97,6 +98,12 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
                   .replaceAll("'",'&#039;');
         }}
 
+        // Minimal markdown: **bold** -> <strong>bold</strong> (after escaping)
+        function renderFragment(s) {{
+          const esc = escapeHtml(s);
+          return esc.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+        }}
+
         function merge(rs) {{
           if (!rs.length) return rs;
           rs.sort((a,b)=>a.start-b.start);
@@ -125,16 +132,16 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
         function render() {{
           const txt = textEl.textContent;
           if (!ranges.length) {{
-            textEl.innerHTML = escapeHtml(txt);
+            textEl.innerHTML = renderFragment(txt);
           }} else {{
             const rs = ranges.slice().sort((a,b)=>a.start-b.start);
             let html='', cur=0;
             for (const r of rs) {{
-              html += escapeHtml(txt.slice(cur, r.start));
-              html += '<mark>' + escapeHtml(txt.slice(r.start, r.end)) + '</mark>';
+              html += renderFragment(txt.slice(cur, r.start));
+              html += '<mark>' + renderFragment(txt.slice(r.start, r.end)) + '</mark>';
               cur = r.end;
             }}
-            html += escapeHtml(txt.slice(cur));
+            html += renderFragment(txt.slice(cur));
             textEl.innerHTML = html;
           }}
           syncToUrl();
@@ -180,6 +187,10 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
           hookSave();
         }} catch(e) {{}}
+
+        // Initial pass: convert existing escaped content to boldified HTML
+        // without altering text content; then keep normal flow.
+        render();
       </script>
     </div>
     """
