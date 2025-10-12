@@ -30,69 +30,53 @@ import html as _py_html
 import html as _py_html
 from streamlit.components.v1 import html as _html
 
+import html as _py_html
+from streamlit.components.v1 import html as _html
+import json
+
 def highlight_widget(text: str, key: str = None, height: int = 420):
     """
-    Render a selectable text box. Returns a dict via Streamlit's component channel:
+    Drag-select text in the box; on mouseup the selection is recorded automatically.
+    Returns a dict via Streamlit's component channel:
       {"highlights": [{"start":..., "end":..., "text":"..."}], "html": "<mark>...</mark>"}
-    NOTE: No 'key'/'scrolling' args passed to _html() to avoid TypeError on some builds.
     """
-    # Escape HTML, then pass as a JSON string (prevents back-tick / quote issues in JS)
     safe_text = _py_html.escape(text)
-    # Wrap as JSON string literal the JS can use directly
-    safe_text_json = json.dumps(safe_text)
+    safe_text_json = json.dumps(safe_text)  # pass safely to JS
 
     code = f"""
     <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
-      <div style="margin-bottom:8px;">
-        <button id="addBtn">Add highlight</button>
-        <button id="clearBtn" style="margin-left:6px;">Clear all</button>
-      </div>
       <div id="box"
-           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;"></div>
+           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:240px;overflow:auto;cursor:text;"></div>
 
       <div style="margin-top:10px;font-size:12px;color:#666;">
-        Select text inside the box above, then click <b>Add highlight</b>.
+        Drag to select text above. Release mouse to record highlight.
       </div>
 
-      <div style="margin-top:12px;">
+      <div style="margin-top:10px;">
         <div style="font-weight:600;margin-bottom:6px;">Preview</div>
         <div id="preview" style="border:1px dashed #ccc;border-radius:8px;padding:10px;white-space:pre-wrap;max-height:140px;overflow:auto;"></div>
       </div>
 
+      <div id="chips" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+
       <script>
-        // Use JSON-literal to avoid template-string issues
         const original = {safe_text_json};
-
         const box = document.getElementById('box');
-        box.textContent = original;  // inject safely as plain text
-
-        const addBtn = document.getElementById('addBtn');
-        const clearBtn = document.getElementById('clearBtn');
         const preview = document.getElementById('preview');
+        const chips = document.getElementById('chips');
+
+        box.textContent = original;
+
         let highlights = [];
 
-        function currentSelectionOffsets() {{
-          const sel = window.getSelection();
-          if (!sel || sel.rangeCount === 0) return null;
-          const range = sel.getRangeAt(0);
-          if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
-          const preRange = document.createRange();
-          preRange.setStart(box, 0);
-          preRange.setEnd(range.startContainer, range.startOffset);
-          const start = preRange.toString().length;
-          const len = range.toString().length;
-          return len > 0 ? {{start: start, end: start + len}} : null;
-        }}
-
         function escapeHtml(s) {{
-          return s
-            .replaceAll('&','&amp;').replaceAll('<','&lt;')
-            .replaceAll('>','&gt;').replaceAll('"','&quot;')
-            .replaceAll("'",'&#039;');
+          return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
+                  .replaceAll('>','&gt;').replaceAll('"','&quot;')
+                  .replaceAll("'",'&#039;');
         }}
 
         function mergeRanges(ranges) {{
-          if (ranges.length===0) return [];
+          if (!ranges.length) return [];
           const s = ranges.slice().sort((a,b)=>a.start-b.start);
           const out = [s[0]];
           for (let i=1;i<s.length;i++) {{
@@ -104,7 +88,7 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
         }}
 
         function rebuildPreview() {{
-          if (highlights.length === 0) {{ preview.textContent = original; return; }}
+          if (!highlights.length) {{ preview.textContent = original; renderChips(); return; }}
           const sorted = highlights.slice().sort((a,b)=>a.start-b.start);
           let html = '', cursor = 0;
           for (const h of sorted) {{
@@ -115,6 +99,39 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
           }}
           html += escapeHtml(original.slice(cursor));
           preview.innerHTML = html;
+          renderChips();
+        }}
+
+        function renderChips() {{
+          chips.innerHTML = '';
+          highlights.forEach((h, idx) => {{
+            const t = original.slice(h.start, h.end);
+            const chip = document.createElement('span');
+            chip.style.cssText = 'font-size:12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:999px;padding:2px 8px;';
+            chip.textContent = t.length > 24 ? t.slice(0,22) + '…' : t;
+            chip.title = t;
+            chip.onclick = () => {{
+              highlights.splice(idx,1);
+              rebuildPreview(); post();
+            }};
+            chips.appendChild(chip);
+          }});
+        }}
+
+        function currentSelectionOffsets() {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return null;
+          const range = sel.getRangeAt(0);
+          if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
+
+          // Measure from start of box
+          const preRange = document.createRange();
+          preRange.setStart(box, 0);
+          preRange.setEnd(range.startContainer, range.startOffset);
+          const start = preRange.toString().length;
+          const len = range.toString().length;
+          if (len <= 0) return null;
+          return {{start, end: start + len}};
         }}
 
         function post() {{
@@ -122,37 +139,58 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
             highlights: highlights.map(h => ({{...h, text: original.slice(h.start,h.end)}})),
             html: preview.innerHTML
           }};
-          // This works with components.html in modern Streamlit
+          // Preferred (newer Streamlit):
           if (window.Streamlit && window.Streamlit.setComponentValue) {{
             window.Streamlit.setComponentValue(payload);
+            return;
           }}
+          // Fallback (older Streamlit):
+          try {{
+            window.parent.postMessage({{
+              isStreamlitMessage: true,
+              type: "streamlit:setComponentValue",
+              value: payload
+            }}, "*");
+          }} catch(e) {{}}
         }}
 
-        addBtn.onclick = () => {{
+        // Capture selection on mouseup (no buttons required)
+        box.addEventListener('mouseup', () => {{
           const off = currentSelectionOffsets();
           if (!off) return;
           highlights.push(off);
           highlights = mergeRanges(highlights);
           rebuildPreview();
           post();
-        }};
-        clearBtn.onclick = () => {{
-          highlights = [];
-          rebuildPreview();
-          post();
-        }};
+          try {{ window.getSelection().removeAllRanges(); }} catch(e) {{}}
+        }});
 
-        // initial render and height
-        rebuildPreview();
-        if (window.Streamlit && window.Streamlit.setFrameHeight) {{
-          window.Streamlit.setFrameHeight({height});
+        // Initial draw + height
+        function setHeight(h) {{
+          try {{
+            if (window.Streamlit && window.Streamlit.setFrameHeight) {{
+              window.Streamlit.setFrameHeight(h);
+            }} else {{
+              window.parent.postMessage({{
+                isStreamlitMessage: true,
+                type: "streamlit:setFrameHeight",
+                height: h
+              }}, "*");
+            }}
+          }} catch(e) {{}}
         }}
+        rebuildPreview();
+        setHeight({height});
+        try {{
+          window.parent.postMessage({{isStreamlitMessage:true, type:"streamlit:componentReady"}}, "*");
+        }} catch(e) {{}}
       </script>
     </div>
     """
 
-    # IMPORTANT: Do not pass key / scrolling (prevents TypeError on some builds)
-    return _html(code, height=height + 40)
+    # NOTE: Avoid passing key/scrolling to be maximally compatible
+    return _html(code, height=height + 60)
+
 
 
 
@@ -557,130 +595,61 @@ st.markdown("---")
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
-    # --- Native Highlighter: sentence/line picker (no JS, always saves) ---
+    # 1) Highlighter OUTSIDE the form (records on mouseup)
     st.markdown("**Highlight the exact text that influenced your conclusion**")
+    hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
 
-    import re
+    # 2) Cache latest highlight so it survives form submit rerun
+    cache_key = f"hl_cache_{case_id}"
+    if isinstance(hl_val, dict):
+        st.session_state[cache_key] = hl_val
 
-    def split_into_spans(txt: str):
-        """
-        Split note into spans close to sentences but robust for clinical notes.
-        We first split on blank lines to keep sections together, then within each block
-        split on sentence boundaries. Fall back to lines for odd formats.
-        Returns a list of non-empty trimmed spans.
-        """
-        spans = []
-        # split on double-newlines (section-ish)
-        blocks = re.split(r"\n\s*\n", txt)
-        sent_re = re.compile(r"(?<=[\.\?\!\:])\s+(?=[A-Z\(])")
-        for b in blocks:
-            b = b.strip()
-            if not b:
-                continue
-            # if the block has many short lines, keep as lines
-            lines = [ln.rstrip() for ln in b.splitlines() if ln.strip() != ""]
-            if len(lines) >= 3 and sum(len(x) for x in lines)/max(len(lines),1) < 90:
-                spans.extend(lines)
-            else:
-                # sentence-ish split
-                parts = sent_re.split(b)
-                # make sure we don't emit empty bits
-                for p in parts:
-                    p = p.strip()
-                    if p:
-                        spans.append(p)
-        return spans
+    # 3) Optional preview from live or cached value
+    _show = hl_val if isinstance(hl_val, dict) else st.session_state.get(cache_key)
+    if isinstance(_show, dict) and _show.get("html"):
+        with st.expander("Your selected highlights (preview)"):
+            st.markdown(_show["html"], unsafe_allow_html=True)
 
-    spans = split_into_spans(summary)
-    # Give each span a stable key
-    span_keys = [f"s{idx}" for idx, _ in enumerate(spans)]
-
-    # Persistent selection per case
-    sel_key = f"hl_sent_sel_{case_id}"
-    if sel_key not in st.session_state:
-        st.session_state[sel_key] = set()
-
-    def _toggle_span(k):
-        s = st.session_state[sel_key]
-        if k in s:
-            s.remove(k)
-        else:
-            s.add(k)
-
-    # Render spans with click-to-mark
-    st.caption("Click a line to toggle highlight. Use the filter to search within the note.")
-    filter_q = st.text_input("Filter (optional)", "", placeholder="e.g., creatinine, oliguria, AKI, rise, urine…")
-    view_spans = [(k, t) for k, t in zip(span_keys, spans) if (filter_q.lower() in t.lower() if filter_q else True)]
-
-    # Two-column compact grid
-    colA, colB = st.columns(2, gap="small")
-    half = (len(view_spans)+1)//2
-    def render_chunk(items, col):
-        with col:
-            for k, t in items:
-                selected = (k in st.session_state[sel_key])
-                style = "background: #fff3cd; border-color:#ffeeba;" if selected else "background: #f8f9fa; border-color:#e9ecef;"
-                if st.button(t, key=f"btn_{k}", use_container_width=True):
-                    _toggle_span(k)
-                # underline selected with a tiny caption
-                st.markdown(
-                    f'<div style="margin-top:-6px;margin-bottom:10px;font-size:11px;color:{"#856404" if selected else "#6c757d"};">'
-                    f'{"✓ selected" if selected else "&nbsp;"}'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-
-    render_chunk(view_spans[:half], colA)
-    render_chunk(view_spans[half:], colB)
-
-    # Build JSON + HTML preview from selected spans
-    selected_idxs = [int(k[1:]) for k in st.session_state[sel_key]]
-    selected_idxs.sort()
-
-    # json structure with indices + text
-    highlights_json_obj = [{"idx": i, "text": spans[i]} for i in selected_idxs]
-    highlights_json = json.dumps(highlights_json_obj, ensure_ascii=False)
-
-    # html preview: wrap selected spans with <mark>, keep original order
-    marked_parts = []
-    for i, t in enumerate(spans):
-        if i in selected_idxs:
-            marked_parts.append(f"<mark>{t}</mark>")
-        else:
-            marked_parts.append(t)
-    preview_html = "<br/>\n".join(marked_parts)
-
-    # Show preview
-    with st.expander("Your selected highlights (preview)"):
-        st.markdown(preview_html, unsafe_allow_html=True)
-        st.caption("This preview will be saved (as JSON by default; you can also store HTML).")
-
-    # ---- Now the form for the rest of Step 1 ----
+    # 4) The form for Q1/Q3/Q4
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
-        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
-        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+        q_rationale = st.text_area(
+            "Please provide a brief rationale for your assessment.",
+            height=140, key="q1_rationale"
+        )
+        q_conf = st.slider(
+            "How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf"
+        )
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
     if submitted1:
         try:
             st.session_state.saving1 = True
-            # Save JSON; optionally also save HTML
+
+            # Read highlights from cache (persisted across rerun)
+            cached = st.session_state.get(cache_key)
+            if isinstance(cached, dict):
+                hl_json = json.dumps(cached.get("highlights", []))  # <-- save JSON
+                hl_html = cached.get("html", "")
+            else:
+                hl_json = "[]"
+                hl_html = ""
+
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": highlights_json,     # JSON with indices + text
+                "q_highlight": hl_json,       # JSON with offsets + raw text
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": "",
-                # If you want to also store HTML, add a column and include:
-                # "q_highlight_html": preview_html,
+                # If you added this column to resp_headers, also store HTML:
+                # "q_highlight_html": hl_html,
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
@@ -689,8 +658,6 @@ if st.session_state.step == 1:
             _scroll_top(); time.sleep(0.25); _rerun()
         finally:
             st.session_state.saving1 = False
-
-
 
 
 
