@@ -461,14 +461,27 @@ ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
+def _df_from_ws(ws):
+    recs = _retry_gs(ws.get_all_records)
+    return pd.DataFrame(recs)
+
+# ---- Load heavy tabs ONCE per user session ----
+if "data_loaded" not in st.session_state:
+    st.session_state.admissions = _df_from_ws(ws_adm)
+    st.session_state.labs = _df_from_ws(ws_labs)
+    # load responses once just to compute resume point
+    st.session_state.responses = _df_from_ws(ws_resp)
+    st.session_state.data_loaded = True
+
+
 # Cache the response headers once so we don’t re-read them on every save
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
 
-admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
-labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
-responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
+admissions = st.session_state.admissions
+labs = st.session_state.labs
+responses = st.session_state.responses
 
 
 
