@@ -34,40 +34,66 @@ import html as _py_html
 from streamlit.components.v1 import html as _html
 import json
 
+# --- Highlighter widget with legacy postMessage fallback ---
+import html as _py_html
+from streamlit.components.v1 import html as _html
+import json as _json
+
 def highlight_widget(text: str, key: str = None, height: int = 420):
     """
-    Drag-select text in the box; on mouseup the selection is recorded automatically.
-    Returns a dict via Streamlit's component channel:
-      {"highlights": [{"start":..., "end":..., "text":"..."}], "html": "<mark>...</mark>"}
+    Returns a dict:
+      {
+        "highlights": [{"start": int, "end": int, "text": str}, ...],
+        "html": "<mark>...</mark>..."
+      }
+    Works on older Streamlit versions by using window.parent.postMessage fallback.
     """
     safe_text = _py_html.escape(text)
-    safe_text_json = json.dumps(safe_text)  # pass safely to JS
+    safe_text_json = _json.dumps(safe_text)  # safe JS string literal
 
     code = f"""
     <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
-      <div id="box"
-           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:240px;overflow:auto;cursor:text;"></div>
-
-      <div style="margin-top:10px;font-size:12px;color:#666;">
-        Drag to select text above. Release mouse to record highlight.
+      <div style="margin-bottom:8px;">
+        <button id="addBtn">Add highlight</button>
+        <button id="clearBtn" style="margin-left:6px;">Clear all</button>
       </div>
 
-      <div style="margin-top:10px;">
+      <div id="box"
+           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;"></div>
+
+      <div style="margin-top:10px;font-size:12px;color:#666;">
+        Select text inside the box above, then click <b>Add highlight</b>.
+      </div>
+
+      <div style="margin-top:12px;">
         <div style="font-weight:600;margin-bottom:6px;">Preview</div>
         <div id="preview" style="border:1px dashed #ccc;border-radius:8px;padding:10px;white-space:pre-wrap;max-height:140px;overflow:auto;"></div>
       </div>
 
-      <div id="chips" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"></div>
-
       <script>
         const original = {safe_text_json};
-        const box = document.getElementById('box');
-        const preview = document.getElementById('preview');
-        const chips = document.getElementById('chips');
 
+        const box = document.getElementById('box');
+        const addBtn = document.getElementById('addBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const preview = document.getElementById('preview');
         box.textContent = original;
 
         let highlights = [];
+
+        function selOffsets() {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return null;
+          const range = sel.getRangeAt(0);
+          if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
+
+          const pre = document.createRange();
+          pre.setStart(box, 0);
+          pre.setEnd(range.startContainer, range.startOffset);
+          const start = pre.toString().length;
+          const len = range.toString().length;
+          return len > 0 ? {{start, end: start + len}} : null;
+        }}
 
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
@@ -75,9 +101,9 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
                   .replaceAll("'",'&#039;');
         }}
 
-        function mergeRanges(ranges) {{
-          if (!ranges.length) return [];
-          const s = ranges.slice().sort((a,b)=>a.start-b.start);
+        function mergeRanges(r) {{
+          if (!r.length) return [];
+          const s = r.slice().sort((a,b)=>a.start-b.start);
           const out = [s[0]];
           for (let i=1;i<s.length;i++) {{
             const last = out[out.length-1], cur = s[i];
@@ -87,109 +113,77 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
           return out;
         }}
 
-        function rebuildPreview() {{
-          if (!highlights.length) {{ preview.textContent = original; renderChips(); return; }}
-          const sorted = highlights.slice().sort((a,b)=>a.start-b.start);
-          let html = '', cursor = 0;
-          for (const h of sorted) {{
-            const pre = original.slice(cursor, h.start);
-            const mid = original.slice(h.start, h.end);
-            html += escapeHtml(pre) + '<mark>' + escapeHtml(mid) + '</mark>';
-            cursor = h.end;
+        function render() {{
+          if (!highlights.length) {{ preview.textContent = original; return; }}
+          const s = highlights.slice().sort((a,b)=>a.start-b.start);
+          let html = '', c = 0;
+          for (const h of s) {{
+            html += escapeHtml(original.slice(c, h.start));
+            html += '<mark>' + escapeHtml(original.slice(h.start, h.end)) + '</mark>';
+            c = h.end;
           }}
-          html += escapeHtml(original.slice(cursor));
+          html += escapeHtml(original.slice(c));
           preview.innerHTML = html;
-          renderChips();
         }}
 
-        function renderChips() {{
-          chips.innerHTML = '';
-          highlights.forEach((h, idx) => {{
-            const t = original.slice(h.start, h.end);
-            const chip = document.createElement('span');
-            chip.style.cssText = 'font-size:12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:999px;padding:2px 8px;';
-            chip.textContent = t.length > 24 ? t.slice(0,22) + '…' : t;
-            chip.title = t;
-            chip.onclick = () => {{
-              highlights.splice(idx,1);
-              rebuildPreview(); post();
-            }};
-            chips.appendChild(chip);
-          }});
-        }}
-
-        function currentSelectionOffsets() {{
-          const sel = window.getSelection();
-          if (!sel || sel.rangeCount === 0) return null;
-          const range = sel.getRangeAt(0);
-          if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
-
-          // Measure from start of box
-          const preRange = document.createRange();
-          preRange.setStart(box, 0);
-          preRange.setEnd(range.startContainer, range.startOffset);
-          const start = preRange.toString().length;
-          const len = range.toString().length;
-          if (len <= 0) return null;
-          return {{start, end: start + len}};
-        }}
-
-        function post() {{
+        function postValue() {{
           const payload = {{
-            highlights: highlights.map(h => ({{...h, text: original.slice(h.start,h.end)}})),
+            highlights: highlights.map(h => ({{...h, text: original.slice(h.start, h.end)}})),
             html: preview.innerHTML
           }};
-          // Preferred (newer Streamlit):
+
+          // New API (Streamlit >= 1.36-ish)
           if (window.Streamlit && window.Streamlit.setComponentValue) {{
             window.Streamlit.setComponentValue(payload);
             return;
           }}
-          // Fallback (older Streamlit):
+
+          // Legacy fallback for components.html
           try {{
             window.parent.postMessage({{
               isStreamlitMessage: true,
               type: "streamlit:setComponentValue",
               value: payload
             }}, "*");
-          }} catch(e) {{}}
+          }} catch (e) {{}}
         }}
 
-        // Capture selection on mouseup (no buttons required)
-        box.addEventListener('mouseup', () => {{
-          const off = currentSelectionOffsets();
+        addBtn.onclick = () => {{
+          const off = selOffsets();
           if (!off) return;
           highlights.push(off);
           highlights = mergeRanges(highlights);
-          rebuildPreview();
-          post();
-          try {{ window.getSelection().removeAllRanges(); }} catch(e) {{}}
-        }});
+          render();
+          postValue();
+        }};
 
-        // Initial draw + height
-        function setHeight(h) {{
+        clearBtn.onclick = () => {{
+          highlights = [];
+          render();
+          postValue();
+        }};
+
+        // initial
+        render();
+
+        // Height (new + legacy)
+        if (window.Streamlit && window.Streamlit.setFrameHeight) {{
+          window.Streamlit.setFrameHeight({height});
+        }} else {{
           try {{
-            if (window.Streamlit && window.Streamlit.setFrameHeight) {{
-              window.Streamlit.setFrameHeight(h);
-            }} else {{
-              window.parent.postMessage({{
-                isStreamlitMessage: true,
-                type: "streamlit:setFrameHeight",
-                height: h
-              }}, "*");
-            }}
+            window.parent.postMessage({{
+              isStreamlitMessage: true,
+              type: "streamlit:setFrameHeight",
+              height: {height}
+            }}, "*");
           }} catch(e) {{}}
         }}
-        rebuildPreview();
-        setHeight({height});
-        try {{
-          window.parent.postMessage({{isStreamlitMessage:true, type:"streamlit:componentReady"}}, "*");
-        }} catch(e) {{}}
       </script>
     </div>
     """
+    # Keep a stable key if you can; if it errors on your build, remove key=key line.
+    return _html(code, height=height + 40, key=key)
 
-    # NOTE: Avoid passing key/scrolling to be maximally compatible
-    return _html(code, height=height + 60)
 
 
 
