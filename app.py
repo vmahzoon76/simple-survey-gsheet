@@ -43,28 +43,35 @@ import json as _json
 import html as _py_html
 from streamlit.components.v1 import html as _html
 
-def highlight_widget(text: str, key: str = None, height: int = 420):
+import html as _py_html
+from streamlit.components.v1 import html as _html
+import json
+import urllib.parse
+
+def highlight_widget(text: str, case_id: str, height: int = 420):
     """
-    Render a selectable text box. Returns a dict via Streamlit's component channel:
-      {"highlights": [{"start":..., "end":..., "text":"..."}], "html": "<mark>...</mark>"}
-    NOTE: No 'key'/'scrolling' args passed to _html() to avoid TypeError on some builds.
+    Highlighter that writes the <mark>…</mark> HTML into the parent page's
+    query string as ?hl_<case_id>=<urlencoded_html>. Python then reads it
+    via st.query_params on submit.
     """
-    # Escape HTML, then pass as a JSON string (prevents back-tick / quote issues in JS)
     safe_text = _py_html.escape(text)
-    # Wrap as JSON string literal the JS can use directly
     safe_text_json = json.dumps(safe_text)
+    qp_key = f"hl_{case_id}"  # query param key
 
     code = f"""
     <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
-      <div style="margin-bottom:8px;">
+      <div style="margin-bottom:8px; display:flex; gap:8px;">
         <button id="addBtn">Add highlight</button>
-        <button id="clearBtn" style="margin-left:6px;">Clear all</button>
+        <button id="clearBtn">Clear all</button>
+        <button id="syncBtn" title="Sync to app (stores in URL)">Sync to app</button>
       </div>
+
       <div id="box"
            style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;"></div>
 
       <div style="margin-top:10px;font-size:12px;color:#666;">
-        Select text inside the box above, then click <b>Add highlight</b>.
+        Select text above, click <b>Add highlight</b>. Repeat for multiple snippets.
+        Click <b>Sync to app</b> before saving Step 1.
       </div>
 
       <div style="margin-top:12px;">
@@ -73,14 +80,15 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
       </div>
 
       <script>
-        // Use JSON-literal to avoid template-string issues
         const original = {safe_text_json};
+        const qpKey = {json.dumps(qp_key)};
 
         const box = document.getElementById('box');
-        box.textContent = original;  // inject safely as plain text
+        box.textContent = original;
 
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
+        const syncBtn = document.getElementById('syncBtn');
         const preview = document.getElementById('preview');
         let highlights = [];
 
@@ -94,7 +102,7 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
           preRange.setEnd(range.startContainer, range.startOffset);
           const start = preRange.toString().length;
           const len = range.toString().length;
-          return len > 0 ? {{start: start, end: start + len}} : null;
+          return len > 0 ? {{start, end: start + len}} : null;
         }}
 
         function escapeHtml(s) {{
@@ -130,14 +138,16 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
           preview.innerHTML = html;
         }}
 
-        function post() {{
-          const payload = {{
-            highlights: highlights.map(h => ({{...h, text: original.slice(h.start,h.end)}})),
-            html: preview.innerHTML
-          }};
-          // This works with components.html in modern Streamlit
-          if (window.Streamlit && window.Streamlit.setComponentValue) {{
-            window.Streamlit.setComponentValue(payload);
+        function syncToApp() {{
+          try {{
+            // Put the preview HTML in the parent URL query string so Python can read it
+            const html = preview.innerHTML;
+            const u = new URL(window.parent.location.href);
+            u.searchParams.set(qpKey, encodeURIComponent(html));
+            window.parent.history.replaceState(null, '', u.toString());
+          }} catch (e) {{
+            console.error('Failed to sync highlights to app URL:', e);
+            alert('Could not sync highlights. Please try again.');
           }}
         }}
 
@@ -147,15 +157,13 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
           highlights.push(off);
           highlights = mergeRanges(highlights);
           rebuildPreview();
-          post();
         }};
         clearBtn.onclick = () => {{
           highlights = [];
           rebuildPreview();
-          post();
         }};
+        syncBtn.onclick = syncToApp;
 
-        // initial render and height
         rebuildPreview();
         if (window.Streamlit && window.Streamlit.setFrameHeight) {{
           window.Streamlit.setFrameHeight({height});
@@ -163,9 +171,8 @@ def highlight_widget(text: str, key: str = None, height: int = 420):
       </script>
     </div>
     """
-
-    # IMPORTANT: Do not pass key / scrolling (prevents TypeError on some builds)
     return _html(code, height=height + 40)
+
 
 
 
@@ -568,48 +575,56 @@ st.markdown("---")
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
+    # ----- Highlighter outside the form -----
     st.markdown("**Highlight the exact text that influenced your conclusion**")
-    hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
-    
-    # Persist latest payload so it survives the form submit rerun
-    if isinstance(hl_val, dict):
-        st.session_state[f"hl_payload_{case_id}"] = hl_val
-    
-    # Optional: show a Python-side preview too (pulled from session_state if available)
-    hl_preview = st.session_state.get(f"hl_payload_{case_id}", {})
-    if isinstance(hl_preview, dict) and hl_preview.get("html"):
-        with st.expander("Your selected highlights (preview)"):
-            st.markdown(hl_preview["html"], unsafe_allow_html=True)
+    highlight_widget(summary, case_id=case_id, height=420)
 
+    # Optional live preview on Python side (read from URL immediately)
+    qp_key = f"hl_{case_id}"
+    qp = st.query_params
+    hl_html_now = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
 
+    if hl_html_now:
+        with st.expander("Your selected highlights (preview from app URL)"):
+            st.markdown(hl_html_now, unsafe_allow_html=True)
+
+    # ----- The form -----
     with st.form("step1_form", clear_on_submit=False):
-        q_aki = st.radio("Based on the discharge summary, do you think the note writers thought the patient had AKI?",
-                         ["Yes", "No"], horizontal=True, key="q1_aki")
-        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
+        q_aki = st.radio(
+            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+            ["Yes", "No"], horizontal=True, key="q1_aki"
+        )
+        q_rationale = st.text_area("Please provide a brief rationale for your assessment.",
+                                   height=140, key="q1_rationale")
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
     if submitted1:
         try:
             st.session_state.saving1 = True
-    
-            # Read persisted payload (survives rerun)
-            saved_hl = st.session_state.get(f"hl_payload_{case_id}", {})
-            hl_html = saved_hl.get("html", "")  # <-- store HTML
-            # If you also want JSON, you can pull: json.dumps(saved_hl.get("highlights", []))
-    
+
+            # Read the synced highlights from the URL query params at submit time
+            qp = st.query_params
+            qp_key = f"hl_{case_id}"
+            hl_html = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
+
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": hl_html,          # <-- save HTML here
+                "q_highlight": hl_html,     # <-- HTML with <mark>…</mark>
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+
+            # (Optional) clear the query param after saving, so it won’t leak into next case
+            st.query_params.clear()  # Streamlit 1.30+; otherwise use st.experimental_set_query_params()
+
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
@@ -617,6 +632,7 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 
 
