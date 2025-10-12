@@ -592,72 +592,65 @@ st.markdown("---")
 # ================== Step 1 ==================
 # ================== Step 1 ==================
 # ================== Step 1 ==================
+# ================== Step 1 ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
-    # 1) Highlighter OUTSIDE the form (records on mouseup)
     st.markdown("**Highlight the exact text that influenced your conclusion**")
+
+    # ---- render highlighter ----
     hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
 
-    # 2) Cache latest highlight so it survives form submit rerun
+    # keep latest highlight permanently
     cache_key = f"hl_cache_{case_id}"
     if isinstance(hl_val, dict):
         st.session_state[cache_key] = hl_val
 
-    # 3) Optional preview from live or cached value
+    # show preview (live or cached)
     _show = hl_val if isinstance(hl_val, dict) else st.session_state.get(cache_key)
     if isinstance(_show, dict) and _show.get("html"):
-        with st.expander("Your selected highlights (preview)"):
-            st.markdown(_show["html"], unsafe_allow_html=True)
+        st.markdown("##### Preview of your highlights:")
+        st.markdown(_show["html"], unsafe_allow_html=True)
 
-    # 4) The form for Q1/Q3/Q4
-    with st.form("step1_form", clear_on_submit=False):
-        q_aki = st.radio(
-            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
-            ["Yes", "No"], horizontal=True, key="q1_aki"
-        )
-        q_rationale = st.text_area(
-            "Please provide a brief rationale for your assessment.",
-            height=140, key="q1_rationale"
-        )
-        q_conf = st.slider(
-            "How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf"
-        )
-        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
+    # ---- normal Streamlit inputs (not inside a form) ----
+    q_aki = st.radio(
+        "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+        ["Yes", "No"], horizontal=True, key="q1_aki"
+    )
+    q_rationale = st.text_area(
+        "Please provide a brief rationale for your assessment.", height=140, key="q1_rationale"
+    )
+    q_conf = st.slider(
+        "How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf"
+    )
 
-    if submitted1:
-        try:
-            st.session_state.saving1 = True
+    # ---- Save button (normal, not form submit) ----
+    if st.button("💾 Save Step 1"):
+        cached = st.session_state.get(cache_key)
+        if isinstance(cached, dict):
+            hl_json = json.dumps(cached.get("highlights", []))
+            hl_html = cached.get("html", "")
+        else:
+            hl_json = "[]"
+            hl_html = ""
 
-            # Read highlights from cache (persisted across rerun)
-            cached = st.session_state.get(cache_key)
-            if isinstance(cached, dict):
-                hl_json = json.dumps(cached.get("highlights", []))  # <-- save JSON
-                hl_html = cached.get("html", "")
-            else:
-                hl_json = "[]"
-                hl_html = ""
+        row = {
+            "timestamp_utc": datetime.utcnow().isoformat(),
+            "reviewer_id": st.session_state.reviewer_id,
+            "case_id": case_id,
+            "step": 1,
+            "q_aki": q_aki,
+            "q_highlight": hl_html,      # ← save HTML so exactly what you see in preview is saved
+            "q_rationale": q_rationale,
+            "q_confidence": q_conf,
+            "q_reasoning": ""
+        }
+        append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+        st.success("✅ Step 1 saved successfully.")
+        st.session_state.step = 2
+        st.session_state.jump_to_top = True
+        _scroll_top(); time.sleep(0.25); _rerun()
 
-            row = {
-                "timestamp_utc": datetime.utcnow().isoformat(),
-                "reviewer_id": st.session_state.reviewer_id,
-                "case_id": case_id,
-                "step": 1,
-                "q_aki": q_aki,
-                "q_highlight": hl_json,       # JSON with offsets + raw text
-                "q_rationale": q_rationale,
-                "q_confidence": q_conf,
-                "q_reasoning": "",
-                # If you added this column to resp_headers, also store HTML:
-                # "q_highlight_html": hl_html,
-            }
-            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-            st.success("Saved Step 1.")
-            st.session_state.step = 2
-            st.session_state.jump_to_top = True
-            _scroll_top(); time.sleep(0.25); _rerun()
-        finally:
-            st.session_state.saving1 = False
 
 
 
