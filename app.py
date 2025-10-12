@@ -23,6 +23,13 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
 # -------------------- Helpers --------------------
 
+import re
+
+def _resp_ws_title_for(reviewer_id: str) -> str:
+    """Make a sheet-safe, reasonably short tab name for this reviewer."""
+    base = re.sub(r'[^A-Za-z0-9 _-]+', '_', reviewer_id).strip() or "anon"
+    return f"responses__{base[:80]}"  # Sheets tab limit is 100; we stay under it
+
 from streamlit.components.v1 import html as _html
 import html as _py_html
 
@@ -423,6 +430,9 @@ if not st.session_state.entered:
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
+
+st.session_state.resp_ws_title = _resp_ws_title_for(st.session_state.reviewer_id)
+
 # ================== Load data from Google Sheets ==================
 try:
     sh = _open_sheet_cached()
@@ -456,16 +466,23 @@ resp_headers = [
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
-ws_resp = get_or_create_ws(sh, "responses", resp_headers)
+# Shared, read-only tabs:
+ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
+ws_labs = get_or_create_ws(sh, "labs", labs_headers)
+
+# Reviewer-specific responses tab:
+resp_ws_title = st.session_state.resp_ws_title
+ws_resp = get_or_create_ws(sh, resp_ws_title, resp_headers)
 
 # Cache the response headers once so we don’t re-read them on every save
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
-
+# Load dataframes
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
-responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
+responses = _read_ws_df(st.secrets["gsheet_id"], resp_ws_title)  # <-- only this reviewer’s responses
+
 
 
 
