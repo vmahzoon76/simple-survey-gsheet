@@ -1,12 +1,14 @@
 import os
 import json
 import time
+import re
+from typing import List, Dict
+from html import escape
 from datetime import datetime
+
 import pandas as pd
 import streamlit as st
 from streamlit.components.v1 import html as _html
-import html
-from streamlit_js_eval import streamlit_js_eval
 
 # Optional Google Sheets support
 USE_GSHEETS = True
@@ -19,42 +21,12 @@ except Exception:
 
 st.set_page_config(page_title="AKI Expert Review", layout="wide")
 st.title("AKI Expert Review")
+# anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
-
-# -------------------- CSS for Highlight UI --------------------
-st.markdown("""
-<style>
-.highlighter-wrap {
-  position: relative;
-  border: 1px solid #e6e6e6;
-  border-radius: 10px;
-  padding: 14px 16px;
-  background: #fff;
-  max-height: 420px;
-  overflow: auto;
-  line-height: 1.45;
-}
-.highlighter-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
-.highlighter-wrap::-webkit-scrollbar-thumb { background:#dcdcdc; border-radius: 8px; }
-mark.hl {
-  background: #fff3b0;
-  padding: 0 0.06em;
-  border-radius: 4px;
-  box-shadow: 0 0 0 2px #ffeaa7 inset;
-}
-.hl-chip {
-  display:inline-flex; align-items:center; gap:8px;
-  background:#f6f6f6; border:1px solid #e6e6e6; border-radius:999px;
-  padding:4px 10px; margin:4px 6px 0 0; font-size:12px;
-}
-.hl-chip button {
-  border:none; background:transparent; cursor:pointer; color:#666; font-size:12px;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # -------------------- Helpers --------------------
 def _rerun():
+    """Streamlit rerun helper that works across versions."""
     try:
         st.rerun()
     except AttributeError:
@@ -68,23 +40,58 @@ def _read_ws_df(sheet_id, ws_title):
     return pd.DataFrame(recs)
 
 def _scroll_top():
-    _html("""
+    """
+    Aggressive scroll-to-top without custom packages:
+     - sets location.hash to '#top' (requires the #top element to exist)
+     - scrolls window and parent (if in iframe)
+     - focuses the top anchor
+     - repeats attempts at multiple delays to survive Streamlit reflows/async loads
+    """
+    _html(
+        """
         <script>
         (function(){
+          try { if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; } } catch(e) {}
           function topNow(){
+            try { location.hash = '#top'; } catch(e){}
+            try { window.scrollTo(0,0); } catch(e){}
+            try { document.documentElement && (document.documentElement.scrollTop = 0); } catch(e){}
+            try { document.body && (document.body.scrollTop = 0); } catch(e){}
             try {
-              location.hash = '#top';
-              window.scrollTo(0,0);
-              document.documentElement.scrollTop = 0;
-              document.body.scrollTop = 0;
-            }catch(e){}
+              if (window.parent && window.parent !== window) {
+                try { window.parent.scrollTo(0,0); } catch(e){}
+                try {
+                  var pdoc = window.parent.document;
+                  if (pdoc) {
+                    pdoc.documentElement && (pdoc.documentElement.scrollTop = 0);
+                    pdoc.body && (pdoc.body.scrollTop = 0);
+                  }
+                } catch(e){}
+              }
+            } catch(e){}
+            try {
+              var el = document.getElementById('top');
+              if (el && typeof el.focus === 'function') { el.focus(); }
+            } catch(e){}
           }
-          topNow(); setTimeout(topNow,50); setTimeout(topNow,400);
+          topNow();
+          setTimeout(topNow, 50);
+          setTimeout(topNow, 150);
+          setTimeout(topNow, 400);
+          setTimeout(topNow, 900);
+          setTimeout(topNow, 1500);
+          setTimeout(topNow, 3000);
         })();
         </script>
-    """, height=0)
+        """,
+        height=0,
+    )
 
 def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
+    """
+    Retry wrapper for Google Sheets calls to tolerate transient API errors (rate limit / 5xx).
+    Raises RuntimeError after repeated failures so UI shows a clear message.
+    """
     last = None
     for _ in range(tries):
         try:
@@ -103,6 +110,7 @@ SCOPE = [
 
 @st.cache_resource(show_spinner=False)
 def _get_client_cached():
+    """Create and cache a gspread client (no args so Streamlit can hash)."""
     if not USE_GSHEETS:
         return None
     try:
@@ -112,6 +120,7 @@ def _get_client_cached():
                 data = json.loads(data)
             creds = ServiceAccountCredentials.from_json_keyfile_dict(data, SCOPE)
         else:
+            # local fallback file
             if not os.path.exists("service_account.json"):
                 return None
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", SCOPE)
@@ -122,36 +131,49 @@ def _get_client_cached():
 
 @st.cache_resource(show_spinner=False)
 def _open_sheet_cached():
+    """Open spreadsheet by ID (stored in st.secrets['gsheet_id']) with retries."""
     sheet_id = st.secrets.get("gsheet_id", "").strip()
     if not sheet_id:
-        raise RuntimeError("Missing gsheet_id in Secrets.")
+        raise RuntimeError("Missing gsheet_id in Secrets. Add the Google Sheet ID between /d/ and /edit.")
+
     client = _get_client_cached()
     if client is None:
-        raise RuntimeError("Google Sheets client not available.")
+        raise RuntimeError("Google Sheets client not available. Ensure Secrets/service_account or service_account.json is present.")
+
     last_err = None
     for i in range(6):
         try:
             return client.open_by_key(sheet_id)
         except SpreadsheetNotFound:
-            raise RuntimeError("Could not open the Google Sheet by ID.")
+            raise RuntimeError(
+                "Could not open the Google Sheet by ID. Double-check gsheet_id and share the sheet with the service-account email as Editor."
+            )
         except APIError as e:
             last_err = e
             time.sleep(1.2 * (i + 1))
     raise RuntimeError(f"Google Sheets API error after retries: {last_err}")
 
 def get_or_create_ws(sh, title, headers=None):
+    """
+    Get a worksheet by title; create with headers if missing.
+    Uses _retry_gs around worksheet and worksheet operations to reduce transient failures.
+    """
     try:
         ws = _retry_gs(sh.worksheet, title)
     except RuntimeError:
+        # probably not found -> create
         ws = _retry_gs(sh.add_worksheet, title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
         if headers:
             _retry_gs(ws.update, [headers])
+
+    # Ensure header row exists and merge non-destructively
     if headers:
         try:
             existing = _retry_gs(ws.row_values, 1)
-        except RuntimeError:
-            st.warning(f"Could not read header row for worksheet '{title}' right now.")
+        except RuntimeError as e:
+            st.warning(f"Could not read header row for worksheet '{title}' right now; continuing. ({e})")
             return ws
+
         if not existing:
             _retry_gs(ws.update, [headers])
         elif existing != headers:
@@ -174,16 +196,87 @@ def append_dict(ws, d, headers=None):
     row = [d.get(h, "") for h in headers]
     _retry_gs(ws.append_row, row, value_input_option="USER_ENTERED")
 
+# ================== Sentence highlighting helpers ==================
+def _split_sentences_with_spans(text: str) -> List[Dict]:
+    """
+    Heuristic sentence splitter (no external libs).
+    Returns list of {id, text, start, end}.
+    - First splits by paragraphs (blank lines),
+    - Then splits paragraphs by punctuation boundaries: . ! ? ;
+    Tracks absolute character spans so you can highlight and store offsets.
+    """
+    items = []
+    idx = 0
+    sid = 0
+    original = text
+
+    # Split paragraphs on 2+ newlines, keeping separators for position tracking
+    paras = re.split(r'(\n{2,})', original)
+
+    for part in paras:
+        start_par = idx
+        idx += len(part)
+        # Skip pure separators and empty parts
+        if re.fullmatch(r'\n{2,}', part or ""):
+            continue
+        if not part.strip():
+            continue
+
+        # Split a paragraph into sentence-like chunks (keep punctuation)
+        for m in re.finditer(r'.+?(?:[.!?;](?=\s)|$)', part, flags=re.S):
+            chunk = m.group(0)
+            clean = chunk.strip()
+            if clean:
+                local_start = m.start()
+                local_end = m.end()
+                abs_start = start_par + local_start
+                abs_end = start_par + local_end
+                items.append({
+                    "id": sid,
+                    "text": clean,
+                    "start": abs_start,
+                    "end": abs_end
+                })
+                sid += 1
+    return items
+
+def _render_marked(text: str, spans: List[Dict]) -> str:
+    """
+    Returns HTML with <mark> wrapping the selected spans.
+    Assumes spans are non-overlapping and within bounds.
+    """
+    if not spans:
+        return f"<div style='white-space:pre-wrap; line-height:1.4'>{escape(text)}</div>"
+    spans = sorted(spans, key=lambda d: d["start"])
+    out = []
+    cur = 0
+    n = len(text)
+    for s in spans:
+        a, b = max(0, min(n, s["start"])), max(0, min(n, s["end"]))
+        if a > cur:
+            out.append(escape(text[cur:a]))
+        out.append(f"<mark>{escape(text[a:b])}</mark>")
+        cur = b
+    if cur < n:
+        out.append(escape(text[cur:]))
+    return f"<div style='white-space:pre-wrap; line-height:1.4'>{''.join(out)}</div>"
+
 # ================== App state ==================
 def init_state():
-    for key, default in {
-        "entered": False, "reviewer_id": "", "case_idx": 0,
-        "step": 1, "jump_to_top": True
-    }.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
+    if "entered" not in st.session_state:
+        st.session_state.entered = False
+    if "reviewer_id" not in st.session_state:
+        st.session_state.reviewer_id = ""
+    if "case_idx" not in st.session_state:
+        st.session_state.case_idx = 0
+    if "step" not in st.session_state:
+        st.session_state.step = 1
+    if "jump_to_top" not in st.session_state:
+        st.session_state.jump_to_top = True
 
 init_state()
+
+# perform top scroll early on each render if requested
 if st.session_state.get("jump_to_top"):
     _scroll_top()
     st.session_state.jump_to_top = False
@@ -206,13 +299,21 @@ if not st.session_state.entered:
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
-# ================== Load data ==================
+# ================== Load data from Google Sheets ==================
 try:
     sh = _open_sheet_cached()
 except RuntimeError as e:
     st.error(str(e))
     st.stop()
 
+# Debug info (optional)
+try:
+    st.caption(f"Connected to Google Sheet: **{sh.title}**")
+    st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
+except Exception:
+    pass
+
+# ================== Worksheets (create if missing) ==================
 adm_headers = ["case_id", "title", "discharge_summary", "weight_kg"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
@@ -223,33 +324,41 @@ resp_headers = [
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
+
+# Cache the response headers once so we don’t re-read them on every save
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
+
 if admissions.empty:
-    st.error("Admissions sheet is empty.")
+    st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
     st.stop()
 
-# Resume progress
+# ===== Resume progress for this reviewer (run once per sign-in) =====
 if st.session_state.entered and not st.session_state.get("progress_initialized"):
     try:
         resp = responses.copy()
         rid = str(st.session_state.reviewer_id)
+
+        # Filter for this reviewer only
         if not resp.empty:
             resp = resp[resp["reviewer_id"].astype(str) == rid]
-        else:
-            resp = resp
+
+        # Normalize types
         if not resp.empty and "step" in resp.columns:
             resp["step"] = pd.to_numeric(resp["step"], errors="coerce").fillna(0).astype(int)
         else:
             resp["step"] = []
+
+        # Sets of finished/started cases
         completed_ids = set(resp.loc[resp["step"] == 2, "case_id"].astype(str)) if not resp.empty else set()
         step1_only_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
-        target_idx = None
-        target_step = 1
+
+        # Find first admission not fully completed
+        target_idx, target_step = None, 1
         for idx, row in admissions.reset_index(drop=True).iterrows():
             cid = str(row.get("case_id", ""))
             if cid in completed_ids:
@@ -257,6 +366,7 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
             target_idx = idx
             target_step = 2 if cid in step1_only_ids else 1
             break
+
         if target_idx is not None:
             st.session_state.case_idx = int(target_idx)
             st.session_state.step = int(target_step)
@@ -265,6 +375,7 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
             st.session_state.step = 1
     except Exception as e:
         st.warning(f"Could not auto-resume progress: {e}")
+
     st.session_state.progress_initialized = True
     st.session_state.jump_to_top = True
     _scroll_top()
@@ -289,135 +400,127 @@ st.caption(
 )
 st.markdown(f"### {case_id} — {title}")
 
-# ================== HIGHLIGHT UTILITIES ==================
-def _merge_overlaps(spans):
-    if not spans: return []
-    spans = sorted(spans, key=lambda s: (s["start"], s["end"]))
-    merged = [spans[0].copy()]
-    for s in spans[1:]:
-        last = merged[-1]
-        if s["start"] <= last["end"]:
-            last["end"] = max(last["end"], s["end"])
-        else:
-            merged.append(s.copy())
-    return merged
-
-def _render_with_highlights(raw_text, spans):
-    if not spans:
-        return f'<div id="sum" class="highlighter-wrap">{html.escape(raw_text)}</div>'
-    spans = _merge_overlaps(spans)
-    out, cursor = [], 0
-    for s in spans:
-        start, end = max(0, min(len(raw_text), s["start"])), max(0, min(len(raw_text), s["end"]))
-        if start > cursor:
-            out.append(html.escape(raw_text[cursor:start]))
-        out.append(f'<mark class="hl">{html.escape(raw_text[start:end])}</mark>')
-        cursor = end
-    if cursor < len(raw_text):
-        out.append(html.escape(raw_text[cursor:]))
-    wrapped = "".join(out)
-    return f'<div id="sum" class="highlighter-wrap">{wrapped}</div>'
+# Filter labs for this case
+case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
+if not case_labs.empty:
+    case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
+scr = case_labs[case_labs["kind"].astype(str).str.lower() == "scr"].sort_values("timestamp")
+uo = case_labs[case_labs["kind"].astype(str).str.lower() == "uo"].sort_values("timestamp")
 
 # ================== Layout ==================
 left, right = st.columns([2, 3], gap="large")
 
 with left:
     st.markdown("**Discharge Summary**")
-    hl_key = f"hl_{case_id}"
-    if hl_key not in st.session_state:
-        st.session_state[hl_key] = []
-
-    # Render text with highlights
-    summary_html = _render_with_highlights(summary, st.session_state[hl_key])
-    st.markdown(summary_html, unsafe_allow_html=True)
-
-    colA, colB = st.columns([1, 3])
-    with colA:
-        add_clicked = st.button("➕ Add selection", help="Select any text in the box, then click")
-
-    if add_clicked:
-        sel = streamlit_js_eval(js_expressions="""
-(() => {
-  const box = document.getElementById('sum');
-  if (!box) return null;
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return null;
-  const rng = sel.getRangeAt(0);
-  const intersects = box.contains(rng.commonAncestorContainer);
-  if (!intersects) return null;
-  const pre = document.createRange();
-  pre.selectNodeContents(box);
-  pre.setEnd(rng.startContainer, rng.startOffset);
-  const start = pre.toString().length;
-  const text = rng.toString();
-  if (!text) return null;
-  return {text, start, end: start + text.length};
-})()
-""", key=f"get_sel_{case_id}")
-        if sel and isinstance(sel, dict) and sel.get("text"):
-            st.session_state[hl_key].append(sel)
-            st.session_state[hl_key] = _merge_overlaps(st.session_state[hl_key])
-            _rerun()
-
-    # Manage highlights
-    if st.session_state[hl_key]:
-        st.caption("Your highlights:")
-        for i, s in enumerate(st.session_state[hl_key]):
-            label = s["text"].strip().replace("\n", " ")
-            if len(label) > 40: label = label[:37] + "…"
-            c1, c2 = st.columns([6,1])
-            c1.markdown(f"<div class='hl-chip'>{html.escape(label)}</div>", unsafe_allow_html=True)
-            if c2.button("✕", key=f"rm_{case_id}_{i}"):
-                del st.session_state[hl_key][i]
-                _rerun()
-        if st.button("Clear all highlights 🗑️"):
-            st.session_state[hl_key] = []
-            _rerun()
+    st.write(summary)
 
 with right:
     if st.session_state.step == 1:
-        st.info("Step 1: Narrative only.")
+        st.info("Step 1: Narrative only. Do not use structured data.")
     else:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
-        case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
-        if not case_labs.empty:
-            case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
-        scr = case_labs[case_labs["kind"].str.lower() == "scr"].sort_values("timestamp")
-        uo = case_labs[case_labs["kind"].str.lower() == "uo"].sort_values("timestamp")
+
         if not scr.empty:
             st.markdown("**Serum Creatinine (mg/dL)**")
             ch_scr = alt.Chart(scr.rename(columns={"timestamp": "time", "value": "scr"})).mark_line(point=True).encode(
-                x=alt.X("time:T", title="Time"), y=alt.Y("scr:Q", title="mg/dL")
+                x=alt.X("time:T", title="Time"),
+                y=alt.Y("scr:Q", title="mg/dL")
             )
             st.altair_chart(ch_scr, use_container_width=True)
+            st.caption("Table — SCr:")
+            st.dataframe(scr[["timestamp", "value", "unit"]].rename(columns={"value": "scr"}), use_container_width=True)
+        else:
+            st.warning("No SCr values for this case.")
+
         if not uo.empty:
-            st.markdown("**Urine Output (mL/kg/h)**")
+            st.markdown("**Urine Output (mL/kg/h)**" + (f" — weight: {weight} kg" if weight else ""))
             ch_uo = alt.Chart(uo.rename(columns={"timestamp": "time", "value": "uo"})).mark_line(point=True).encode(
-                x=alt.X("time:T", title="Time"), y=alt.Y("uo:Q", title="mL/kg/h")
+                x=alt.X("time:T", title="Time"),
+                y=alt.Y("uo:Q", title="mL/kg/h")
             )
-            st.altair_chart(ch_uo, use_container_width=True)
+            ref = pd.DataFrame({"time": [uo["timestamp"].min(), uo["timestamp"].max()], "ref": [0.5, 0.5]})
+            ch_ref = alt.Chart(ref).mark_rule(strokeDash=[6, 6]).encode(x="time:T", y="ref:Q")
+            st.altair_chart(ch_uo + ch_ref, use_container_width=True)
+            st.caption("Table — UO:")
+            st.dataframe(uo[["timestamp", "value", "unit"]].rename(columns={"value": "uo"}), use_container_width=True)
+        else:
+            st.warning("No UO values for this case.")
 
 st.markdown("---")
 
 # ================== Questions & Saving ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
+
+    # Build sentence inventory once per case (cache in session to avoid rework)
+    if f"sents_{case_id}" not in st.session_state:
+        sents = _split_sentences_with_spans(summary)
+        st.session_state[f"sents_{case_id}"] = sents
+    else:
+        sents = st.session_state[f"sents_{case_id}"]
+
+    # Labels for multiselect
+    sent_labels = [
+        f"S{i:02d} — {s['text'][:100].replace('\n',' ')}" + ("…" if len(s['text']) > 100 else "")
+        for i, s in enumerate(sents)
+    ]
+    id_by_label = {lbl: sents[i]["id"] for i, lbl in enumerate(sent_labels)}
+    sent_by_id = {s["id"]: s for s in sents}
+
     with st.form("step1_form", clear_on_submit=False):
-        q_aki = st.radio("Did the note writer think the patient had AKI?", ["Yes", "No"], horizontal=True)
-        q_rationale = st.text_area("Please provide a brief rationale.", height=140)
-        q_conf = st.slider("How confident are you? (1–5)", 1, 5, 3)
-        submitted1 = st.form_submit_button("Save Step 1 ✅")
+        q_aki = st.radio(
+            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+            ["Yes", "No"], horizontal=True, key="q1_aki"
+        )
+
+        st.markdown("**Highlight key evidence (pick one or more sentences)**")
+        # Quick controls (optional)
+        colA, colB = st.columns([1,1])
+        with colA:
+            if st.form_submit_button("Select All", use_container_width=True):
+                st.session_state["q1_sel_labels"] = sent_labels
+        with colB:
+            if st.form_submit_button("Clear", use_container_width=True):
+                st.session_state["q1_sel_labels"] = []
+
+        sel_labels = st.multiselect(
+            "These will be highlighted in yellow below and saved.",
+            options=sent_labels,
+            default=st.session_state.get("q1_sel_labels", []),
+            key="q1_sel_labels"
+        )
+
+        # Map selection back to sentence dicts
+        selected_ids = [id_by_label[lbl] for lbl in sel_labels]
+        selected_spans = [sent_by_id[i] for i in selected_ids]
+
+        # Live preview with <mark> highlighting
+        st.markdown("**Preview with highlights**")
+        st.markdown(_render_marked(summary, selected_spans), unsafe_allow_html=True)
+
+        q_rationale = st.text_area("Brief rationale for your assessment.", height=140, key="q1_rationale")
+        q_conf = st.slider("Confidence (1–5)", 1, 5, 3, key="q1_conf")
+
+        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
     if submitted1:
         try:
+            st.session_state.saving1 = True
+            # Persist as JSON (ids + text + spans) for auditability & re-rendering later
+            highlight_payload = {
+                "case_id": case_id,
+                "reviewer_id": st.session_state.reviewer_id,
+                "selected": [{"id": s["id"], "text": s["text"], "start": s["start"], "end": s["end"]} for s in selected_spans],
+                "version": 1
+            }
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": json.dumps(st.session_state.get(hl_key, []), ensure_ascii=False),
+                "q_highlight": json.dumps(highlight_payload, ensure_ascii=False),
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
@@ -426,28 +529,36 @@ if st.session_state.step == 1:
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
-            time.sleep(0.5)
+            _scroll_top()
+            time.sleep(0.25)
             _rerun()
-        except Exception as e:
-            st.error(f"An error occurred while saving Step 1: {e}")
+        finally:
+            st.session_state.saving1 = False
 
 else:
     st.subheader("Step 2 — Questions (Full Context)")
     with st.form("step2_form", clear_on_submit=False):
-        q_aki2 = st.radio("Given all info, did this patient have AKI?", ["Yes", "No"], horizontal=True)
-        q_reasoning = st.text_area("Describe your reasoning process.", height=180)
-        submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)")
+        q_aki2 = st.radio(
+            "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
+            ["Yes", "No"], horizontal=True, key="q2_aki"
+        )
+        q_reasoning = st.text_area(
+            "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
+            height=180, key="q2_reasoning"
+        )
+        submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
 
     if submitted2:
         try:
+            st.session_state.saving2 = True
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 2,
                 "q_aki": q_aki2,
-                "q_highlight": "", # No highlights in step 2
-                "q_rationale": q_reasoning,
+                "q_highlight": "",
+                "q_rationale": q_reasoning,  # keep if you want both; otherwise drop this field from headers later
                 "q_confidence": "",
                 "q_reasoning": q_reasoning
             }
@@ -456,10 +567,11 @@ else:
             st.session_state.step = 1
             st.session_state.case_idx += 1
             st.session_state.jump_to_top = True
-            time.sleep(0.5)
+            _scroll_top()
+            time.sleep(0.25)
             _rerun()
-        except Exception as e:
-            st.error(f"An error occurred while saving Step 2: {e}")
+        finally:
+            st.session_state.saving2 = False
 
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
@@ -471,10 +583,14 @@ with c1:
             st.session_state.case_idx -= 1
             st.session_state.step = 2
         st.session_state.jump_to_top = True
+        _scroll_top()
+        time.sleep(0.18)
         _rerun()
 with c3:
     if st.button("Skip ▶"):
         st.session_state.step = 1
         st.session_state.case_idx += 1
         st.session_state.jump_to_top = True
+        _scroll_top()
+        time.sleep(0.18)
         _rerun()
