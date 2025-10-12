@@ -7,10 +7,6 @@ import pandas as pd
 import streamlit as st
 from streamlit.components.v1 import html as _html
 
-# NEW: for highlight selection and markdown rendering
-from streamlit_js_eval import streamlit_js_eval
-import markdown as md
-
 # Optional Google Sheets support
 USE_GSHEETS = True
 try:
@@ -40,6 +36,8 @@ def _read_ws_df(sheet_id, ws_title):
     recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
 
+
+
 def _scroll_top():
     """
     Aggressive scroll-to-top:
@@ -56,10 +54,15 @@ def _scroll_top():
 
           function topNow(){
             try {
+              // anchor jump
               try { location.hash = '#top'; } catch(e){}
+
+              // scroll window/document
               try { window.scrollTo(0,0); } catch(e){}
               try { document.documentElement && (document.documentElement.scrollTop = 0); } catch(e){}
               try { document.body && (document.body.scrollTop = 0); } catch(e){}
+
+              // parent frame if embedded
               try {
                 if (window.parent && window.parent !== window) {
                   try { window.parent.scrollTo(0,0); } catch(e){}
@@ -72,12 +75,16 @@ def _scroll_top():
                   } catch(e){}
                 }
               } catch(e){}
+
+              // focus anchor (preventScroll true not supported everywhere, but trying helps)
               try {
                 var el = document.getElementById('top');
                 if (el && typeof el.focus === 'function') { el.focus(); }
               } catch(e){}
             } catch(e){}
           }
+
+          // call several times to survive Streamlit's DOM changes / async loads
           topNow();
           setTimeout(topNow, 50);
           setTimeout(topNow, 150);
@@ -175,6 +182,7 @@ def get_or_create_ws(sh, title, headers=None):
         try:
             existing = _retry_gs(ws.row_values, 1)
         except RuntimeError as e:
+            # Non-fatal: warn and continue. App can still append rows with headers in unknown order.
             st.warning(f"Could not read header row for worksheet '{title}' right now; continuing. ({e})")
             return ws
 
@@ -200,43 +208,6 @@ def append_dict(ws, d, headers=None):
     row = [d.get(h, "") for h in headers]
     _retry_gs(ws.append_row, row, value_input_option="USER_ENTERED")
 
-# ================== NEW: Highlight helpers ==================
-def add_highlight_span(md_text: str, selected: str) -> str:
-    """
-    Wrap the first non-overlapping occurrence of `selected` in md_text with ==...==.
-    If nothing is selected or not found, return the original text.
-    """
-    s = (selected or "").strip()
-    if not s:
-        return md_text
-    # Avoid re-highlighting already-highlighted spans
-    if f"=={s}==" in md_text:
-        return md_text
-    idx = md_text.find(s)
-    if idx == -1:
-        return md_text
-    return md_text[:idx] + f"=={s}==" + md_text[idx+len(s):]
-
-def render_md_with_highlights(md_text: str) -> str:
-    """
-    Convert markdown (with ==highlight== and **bold**) to HTML.
-    """
-    html = md.markdown(
-        md_text,
-        extensions=[
-            "pymdownx.mark",      # turns ==text== into <mark>text</mark>
-            "pymdownx.tilde",     # optional; supports ~~strike~~
-            "pymdownx.betterem",  # better **bold**/_italics_
-            "extra",              # common extras (tables, etc.)
-        ],
-        output_format="html5",
-    )
-    css = """
-    <style>
-      mark { padding: 0.05em 0.2em; border-radius: 0.2em; }
-    </style>
-    """
-    return css + html
 
 # ================== App state ==================
 def init_state():
@@ -249,10 +220,8 @@ def init_state():
     if "step" not in st.session_state:
         st.session_state.step = 1
     if "jump_to_top" not in st.session_state:
+        # start at top on first load
         st.session_state.jump_to_top = True
-    # NEW: per-case markdown (with live highlights)
-    if "case_md" not in st.session_state:
-        st.session_state.case_md = {}
 
 init_state()
 
@@ -291,17 +260,15 @@ try:
     st.caption(f"Connected to Google Sheet: **{sh.title}**")
     st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
 except Exception:
+    # non-fatal debug failure
     pass
 
 # ================== Worksheets (create if missing) ==================
 adm_headers = ["case_id", "title", "discharge_summary", "weight_kg"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
-
-# NEW: add highlight_md and highlight_html to responses
 resp_headers = [
     "timestamp_utc", "reviewer_id", "case_id", "step",
-    "q_aki", "q_highlight", "q_highlight_md", "q_highlight_html",
-    "q_rationale", "q_confidence", "q_reasoning"
+    "q_aki", "q_highlight", "q_rationale", "q_confidence", "q_reasoning"
 ]
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
@@ -312,13 +279,17 @@ ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
+
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
+
+
 if admissions.empty:
     st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
     st.stop()
+
 
 # ===== Resume progress for this reviewer (run once per sign-in) =====
 if st.session_state.entered and not st.session_state.get("progress_initialized"):
@@ -326,19 +297,23 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
         resp = responses.copy()
         rid = str(st.session_state.reviewer_id)
 
+        # Filter for this reviewer only
         if not resp.empty:
             resp = resp[resp["reviewer_id"].astype(str) == rid]
         else:
-            resp = resp
+            resp = resp  # leave empty
 
+        # Normalize types
         if not resp.empty and "step" in resp.columns:
             resp["step"] = pd.to_numeric(resp["step"], errors="coerce").fillna(0).astype(int)
         else:
             resp["step"] = []
 
+        # Sets of finished/started cases
         completed_ids = set(resp.loc[resp["step"] == 2, "case_id"].astype(str)) if not resp.empty else set()
         step1_only_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
 
+        # Find first admission not fully completed
         target_idx = None
         target_step = 1
         for idx, row in admissions.reset_index(drop=True).iterrows():
@@ -353,17 +328,20 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
             st.session_state.case_idx = int(target_idx)
             st.session_state.step = int(target_step)
         else:
+            # All admissions completed by this reviewer
             st.session_state.case_idx = len(admissions)
             st.session_state.step = 1
 
     except Exception as e:
         st.warning(f"Could not auto-resume progress: {e}")
 
+    # Mark done and refresh to land on the right case/step
     st.session_state.progress_initialized = True
     st.session_state.jump_to_top = True
     _scroll_top()
     time.sleep(0.15)
     _rerun()
+
 
 # ================== Current case ==================
 if st.session_state.case_idx >= len(admissions):
@@ -375,14 +353,6 @@ case_id = str(case.get("case_id", ""))
 title = str(case.get("title", ""))
 summary = str(case.get("discharge_summary", ""))
 weight = case.get("weight_kg", "")
-
-# ensure we have a working markdown for this case
-if case_id not in st.session_state.case_md:
-    st.session_state.case_md[case_id] = summary
-
-# aliases for current working markdown
-base_md = summary
-current_md = st.session_state.case_md.get(case_id, base_md)
 
 st.caption(
     f"Reviewer: **{st.session_state.reviewer_id}** • "
@@ -403,42 +373,7 @@ left, right = st.columns([2, 3], gap="large")
 
 with left:
     st.markdown("**Discharge Summary**")
-
-    # Render markdown that may contain ==...== highlight markers
-    html_summary = render_md_with_highlights(current_md)
-    _html(f'<div id="note" style="line-height:1.5">{html_summary}</div>', height=420, scrolling=True)
-
-    # Read current browser text selection
-    selected_text = streamlit_js_eval(
-        js_expressions="window.getSelection().toString()",
-        key=f"sel_{case_id}_{st.session_state.step}"
-    )
-
-    c_add, c_undo, c_clear = st.columns([1, 1, 1])
-    with c_add:
-        if st.button("✨ Add highlight", help="Select text above, then click"):
-            if (selected_text or "").strip():
-                new_md = add_highlight_span(current_md, selected_text)
-                st.session_state.case_md[case_id] = new_md
-                st.session_state.jump_to_top = False
-                _rerun()
-            else:
-                st.warning("Select some text in the summary first.")
-    with c_undo:
-        if st.button("↩ Undo last"):
-            # remove the last ==...== pair (simple stackless undo)
-            txt = st.session_state.case_md.get(case_id, base_md)
-            last_start = txt.rfind("==")
-            if last_start != -1:
-                prev_start = txt.rfind("==", 0, last_start)
-                if prev_start != -1:
-                    txt = txt[:prev_start] + txt[prev_start+2:last_start] + txt[last_start+2:]
-                    st.session_state.case_md[case_id] = txt
-                    _rerun()
-    with c_clear:
-        if st.button("🧽 Clear all"):
-            st.session_state.case_md[case_id] = base_md
-            _rerun()
+    st.write(summary)
 
 with right:
     if st.session_state.step == 1:
@@ -446,6 +381,11 @@ with right:
     else:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
+
+        # ensure we nudge to top when entering step 2 (defensive)
+        # (we set jump_to_top before rerun on transitions; leave this commented unless needed)
+        # st.session_state.jump_to_top = True
+        # _scroll_top()
 
         if not scr.empty:
             st.markdown("**Serum Creatinine (mg/dL)**")
@@ -483,10 +423,9 @@ if st.session_state.step == 1:
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
-        # keep this if you still want manual paste; else remove from headers too
         q_highlight = st.text_area(
-            "Optional: paste specific text (you can rely on inline highlights instead).",
-            height=100, key="q1_highlight"
+            "Please highlight (paste) any specific text in the note that impacted your conclusion.",
+            height=120, key="q1_highlight"
         )
         q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
@@ -496,24 +435,18 @@ if st.session_state.step == 1:
     if submitted1:
         try:
             st.session_state.saving1 = True
-            # Save current markdown + rendered HTML
-            md_to_save = st.session_state.case_md.get(case_id, base_md)
-            html_to_save = render_md_with_highlights(md_to_save)
-
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": q_highlight,            # optional free text
-                "q_highlight_md": md_to_save,          # NEW: full MD with ==...==
-                "q_highlight_html": html_to_save,      # NEW: rendered HTML
+                "q_highlight": q_highlight,
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
             }
-            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)  # note: updated append_dict below
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
@@ -522,6 +455,7 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 else:
     st.subheader("Step 2 — Questions (Full Context)")
@@ -539,20 +473,14 @@ else:
     if submitted2:
         try:
             st.session_state.saving2 = True
-            # Save current markdown + rendered HTML (post-structured data review)
-            md_to_save = st.session_state.case_md.get(case_id, base_md)
-            html_to_save = render_md_with_highlights(md_to_save)
-
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 2,
                 "q_aki": q_aki2,
-                "q_highlight": "",                    # no free text here
-                "q_highlight_md": md_to_save,         # NEW
-                "q_highlight_html": html_to_save,     # NEW
-                "q_rationale": q_reasoning,           # keep if desired
+                "q_highlight": "",
+                "q_rationale": q_reasoning,  # keep if you want both; otherwise drop this field from headers later
                 "q_confidence": "",
                 "q_reasoning": q_reasoning
             }
@@ -566,6 +494,7 @@ else:
             _rerun()
         finally:
             st.session_state.saving2 = False
+
 
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
@@ -588,3 +517,7 @@ with c3:
         _scroll_top()
         time.sleep(0.18)
         _rerun()
+
+
+
+read this app to learn what I am doing. do not repeat just know what I am doing
