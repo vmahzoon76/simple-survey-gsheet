@@ -1,5 +1,3 @@
-
-
 import os
 import json
 import time
@@ -425,8 +423,6 @@ if not st.session_state.entered:
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
-reviewer_sheet_name = "responses_" + st.session_state.reviewer_id.replace(" ", "_").replace("/", "_")
-
 # ================== Load data from Google Sheets ==================
 try:
     sh = _open_sheet_cached()
@@ -460,9 +456,7 @@ resp_headers = [
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
-reviewer_sheet_name = "responses_" + st.session_state.reviewer_id.replace(" ", "_").replace("/", "_")
-ws_resp = get_or_create_ws(sh, reviewer_sheet_name, resp_headers)
-
+ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
 # Cache the response headers once so we don’t re-read them on every save
 if "resp_headers" not in st.session_state:
@@ -786,6 +780,8 @@ with c3:
         _scroll_top()
         time.sleep(0.18)
         _rerun()
+
+
 
 
 
