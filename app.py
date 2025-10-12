@@ -48,35 +48,40 @@ from streamlit.components.v1 import html as _html
 import json
 import urllib.parse
 
-def highlight_widget(text: str, case_id: str, height: int = 420):
+
+import html as _py_html
+from streamlit.components.v1 import html as _html
+import json
+import urllib.parse
+
+def highlight_widget_inside_form(text: str, case_id: str, height: int = 260):
     """
-    Highlighter that writes the <mark>…</mark> HTML into the parent page's
-    query string as ?hl_<case_id>=<urlencoded_html>. Python then reads it
-    via st.query_params on submit.
+    Highlighter for use INSIDE a Streamlit form.
+    - Shows a selection box and a 'live' highlighted view with identical styling.
+    - Auto-syncs the <mark>...<mark> HTML to the parent URL as ?hl_<case_id>=...
+      after every change AND when the 'Save Step 1' button is clicked.
     """
     safe_text = _py_html.escape(text)
     safe_text_json = json.dumps(safe_text)
-    qp_key = f"hl_{case_id}"  # query param key
+    qp_key = f"hl_{case_id}"
 
     code = f"""
     <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
-      <div style="margin-bottom:8px; display:flex; gap:8px;">
-        <button id="addBtn">Add highlight</button>
-        <button id="clearBtn">Clear all</button>
-        <button id="syncBtn" title="Sync to app (stores in URL)">Sync to app</button>
-      </div>
-
+      <!-- Selection box -->
       <div id="box"
-           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;"></div>
+           style="border:1px solid #ddd;border-radius:8px;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:{height}px;overflow:auto;"></div>
 
-      <div style="margin-top:10px;font-size:12px;color:#666;">
-        Select text above, click <b>Add highlight</b>. Repeat for multiple snippets.
-        Click <b>Sync to app</b> before saving Step 1.
+      <!-- Looks identical to the box above (so they appear as one) -->
+      <div id="preview"
+           style="border:1px solid #ddd;border-top:0;padding:12px;white-space:pre-wrap;line-height:1.5;max-height:{height}px;overflow:auto;border-radius:0 0 8px 8px;"></div>
+
+      <div style="margin:6px 0 10px 0; font-size:12px; color:#666;">
+        Select text in the top box, then click <b>Add selection</b>. You can add multiple. Clear if needed.
       </div>
 
-      <div style="margin-top:12px;">
-        <div style="font-weight:600;margin-bottom:6px;">Preview</div>
-        <div id="preview" style="border:1px dashed #ccc;border-radius:8px;padding:10px;white-space:pre-wrap;max-height:140px;overflow:auto;"></div>
+      <div style="display:flex; gap:8px; margin-bottom:4px;">
+        <button id="addBtn">Add selection</button>
+        <button id="clearBtn">Clear</button>
       </div>
 
       <script>
@@ -84,12 +89,12 @@ def highlight_widget(text: str, case_id: str, height: int = 420):
         const qpKey = {json.dumps(qp_key)};
 
         const box = document.getElementById('box');
-        box.textContent = original;
-
+        const preview = document.getElementById('preview');
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
-        const syncBtn = document.getElementById('syncBtn');
-        const preview = document.getElementById('preview');
+
+        box.textContent = original;
+
         let highlights = [];
 
         function currentSelectionOffsets() {{
@@ -97,6 +102,8 @@ def highlight_widget(text: str, case_id: str, height: int = 420):
           if (!sel || sel.rangeCount === 0) return null;
           const range = sel.getRangeAt(0);
           if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
+
+          // Measure offsets against plain text (top box is plain text)
           const preRange = document.createRange();
           preRange.setStart(box, 0);
           preRange.setEnd(range.startContainer, range.startOffset);
@@ -124,8 +131,8 @@ def highlight_widget(text: str, case_id: str, height: int = 420):
           return out;
         }}
 
-        function rebuildPreview() {{
-          if (highlights.length === 0) {{ preview.textContent = original; return; }}
+        function buildHtml() {{
+          if (highlights.length === 0) return escapeHtml(original);
           const sorted = highlights.slice().sort((a,b)=>a.start-b.start);
           let html = '', cursor = 0;
           for (const h of sorted) {{
@@ -135,20 +142,23 @@ def highlight_widget(text: str, case_id: str, height: int = 420):
             cursor = h.end;
           }}
           html += escapeHtml(original.slice(cursor));
-          preview.innerHTML = html;
+          return html;
         }}
 
-        function syncToApp() {{
+        function syncToApp(html) {{
           try {{
-            // Put the preview HTML in the parent URL query string so Python can read it
-            const html = preview.innerHTML;
             const u = new URL(window.parent.location.href);
             u.searchParams.set(qpKey, encodeURIComponent(html));
             window.parent.history.replaceState(null, '', u.toString());
           }} catch (e) {{
-            console.error('Failed to sync highlights to app URL:', e);
-            alert('Could not sync highlights. Please try again.');
+            console.error('Sync failed:', e);
           }}
+        }}
+
+        function refresh() {{
+          const html = buildHtml();
+          preview.innerHTML = html;
+          syncToApp(html);
         }}
 
         addBtn.onclick = () => {{
@@ -156,22 +166,45 @@ def highlight_widget(text: str, case_id: str, height: int = 420):
           if (!off) return;
           highlights.push(off);
           highlights = mergeRanges(highlights);
-          rebuildPreview();
+          refresh();
         }};
+
         clearBtn.onclick = () => {{
           highlights = [];
-          rebuildPreview();
+          refresh();
         }};
-        syncBtn.onclick = syncToApp;
 
-        rebuildPreview();
+        // First paint
+        preview.innerHTML = escapeHtml(original);
         if (window.Streamlit && window.Streamlit.setFrameHeight) {{
-          window.Streamlit.setFrameHeight({height});
+          window.Streamlit.setFrameHeight({height}*2 + 70);
         }}
+
+        // Also auto-sync again when any button with 'Save Step 1' is clicked in parent
+        // (works even inside Streamlit forms)
+        const observer = new MutationObserver(() => {{
+          try {{
+            const buttons = window.parent.document.querySelectorAll('button');
+            buttons.forEach(btn => {{
+              if (btn.__hl_hooked__) return;
+              if ((btn.textContent || '').includes('Save Step 1')) {{
+                btn.__hl_hooked__ = true;
+                btn.addEventListener('click', () => {{
+                  // force a last sync right before submit triggers a rerun
+                  syncToApp(preview.innerHTML);
+                }}, {{capture:true}});
+              }}
+            }});
+          }} catch(e) {{}}
+        }});
+        try {{
+          observer.observe(window.parent.document.body, {{childList: true, subtree: true}});
+        }} catch(e) {{}}
       </script>
     </div>
     """
-    return _html(code, height=height + 40)
+    return _html(code, height=height*2 + 100)
+
 
 
 
@@ -575,25 +608,15 @@ st.markdown("---")
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
-    # ----- Highlighter outside the form -----
-    st.markdown("**Highlight the exact text that influenced your conclusion**")
-    highlight_widget(summary, case_id=case_id, height=420)
-
-    # Optional live preview on Python side (read from URL immediately)
-    qp_key = f"hl_{case_id}"
-    qp = st.query_params
-    hl_html_now = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
-
-    if hl_html_now:
-        with st.expander("Your selected highlights (preview from app URL)"):
-            st.markdown(hl_html_now, unsafe_allow_html=True)
-
-    # ----- The form -----
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
+
+        st.markdown("**Highlight the exact text that influenced your conclusion**")
+        highlight_widget_inside_form(summary, case_id=case_id, height=260)
+
         q_rationale = st.text_area("Please provide a brief rationale for your assessment.",
                                    height=140, key="q1_rationale")
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
@@ -605,8 +628,8 @@ if st.session_state.step == 1:
             st.session_state.saving1 = True
 
             # Read the synced highlights from the URL query params at submit time
-            qp = st.query_params
             qp_key = f"hl_{case_id}"
+            qp = st.query_params
             hl_html = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
 
             row = {
@@ -615,15 +638,15 @@ if st.session_state.step == 1:
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": hl_html,     # <-- HTML with <mark>…</mark>
+                "q_highlight": hl_html,     # HTML with <mark>...</mark>
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
 
-            # (Optional) clear the query param after saving, so it won’t leak into next case
-            st.query_params.clear()  # Streamlit 1.30+; otherwise use st.experimental_set_query_params()
+            # clear param so it doesn't leak into the next case
+            st.query_params.clear()
 
             st.success("Saved Step 1.")
             st.session_state.step = 2
@@ -632,6 +655,7 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 
 
