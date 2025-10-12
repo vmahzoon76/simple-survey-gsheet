@@ -684,9 +684,9 @@ left, right = st.columns([3, 4], gap="large")
 with left:
     st.markdown("**Discharge Summary (highlight directly in the text below)**")
     if st.session_state.step == 1:
-        inline_highlighter(summary, case_id=case_id, step_key="step1", height=600)
+        inline_highlighter(summary, case_id=case_id, step_key="step1", height=800)
     else:
-        inline_highlighter(summary, case_id=case_id, step_key="step2", height=600)
+        inline_highlighter(summary, case_id=case_id, step_key="step2", height=800)
 
 
 
@@ -809,66 +809,46 @@ else:
             "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q2_aki"
         )
-    
-        # Confidence for Step 2
+
+        # Confidence for Step 2 as well
         q_conf2 = st.slider("How confident are you in your Step 2 assessment? (1–5)", 1, 5, 3, key="q2_conf")
-    
+
         # Think-aloud reasoning (keep)
         q_reasoning = st.text_area(
             "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
             height=180, key="q2_reasoning"
         )
-    
+
         # Conditional fields if AKI == Yes
-        etiology_choice = ""
-        etiology_expl   = ""
-        stage_choice    = ""
-        stage_expl      = ""
-        q_onset_exp     = ""
-    
+        q_etiology = ""
+        q_stage = ""
+        q_onset_exp = ""
+
         if q_aki2 == "Yes":
-            etiology_choice = st.radio(
+            q_etiology = st.selectbox(
                 "What was the reason behind AKI?",
-                ["Pre-renal", "Intrinsic", "Post-renal", "Multi-factorial"],
-                horizontal=False, key="q2_etiology_choice"
+                ["Pre-renal", "Intrinsic", "Post-renal", "Multi-factorial"], key="q2_etiology"
             )
-            etiology_expl = st.text_area(
-                "How did you conclude the etiology?",
-                height=120, key="q2_etiology_expl"
-            )
-    
-            stage_choice = st.radio(
+            q_stage = st.selectbox(
                 "What stage of AKI do you believe the patient reached?",
-                ["Stage 1", "Stage 2", "Stage 3", "Unclear"],
-                horizontal=False, key="q2_stage_choice"
+                ["Stage 1", "Stage 2", "Stage 3", "Unclear"], key="q2_stage"
             )
-            stage_expl = st.text_area(
-                "How did you conclude the stage?",
-                height=120, key="q2_stage_expl"
-            )
-    
             q_onset_exp = st.text_area(
                 "When was the AKI onset? Explain how you concluded it.",
                 key="q2_onset_explanation", height=160
             )
-    
+
         submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
-
-
 
     if submitted2:
         try:
             st.session_state.saving2 = True
-    
+
             # Read Step-2 highlights
             qp_key2 = f"hl_step2_{case_id}"
             qp = st.query_params
             hl_html2 = urllib.parse.unquote(qp.get(qp_key2, "")) if qp_key2 in qp else ""
-    
-            # Combine choice + explanation into a single string per column
-            eti_combined   = f"{etiology_choice} — {etiology_expl}".strip(" —") if q_aki2 == "Yes" else ""
-            stage_combined = f"{stage_choice} — {stage_expl}".strip(" —")       if q_aki2 == "Yes" else ""
-    
+
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
@@ -876,21 +856,21 @@ else:
                 "step": 2,
                 "aki": q_aki2,
                 "highlight_html": hl_html2,
-                "rationale": "",                 # Step 2: rationale stays empty
+                "rationale": "",                 # Step 2: keep empty (rationale belongs to Step 1)
                 "confidence": q_conf2,
                 "reasoning": q_reasoning,        # think-aloud
-                "aki_etiology": eti_combined,
-                "aki_stage": stage_combined,
+                "aki_etiology": (q_etiology if q_aki2 == "Yes" else ""),
+                "aki_stage": (q_stage if q_aki2 == "Yes" else ""),
                 "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-    
+
             # Clear Step-2 highlight param and advance
             try:
                 st.query_params.pop(qp_key2, None)
             except Exception:
                 st.query_params.clear()
-    
+
             st.success("Saved Step 2.")
             st.session_state.step = 1
             st.session_state.case_idx += 1
@@ -898,8 +878,6 @@ else:
             _scroll_top(); time.sleep(0.25); _rerun()
         finally:
             st.session_state.saving2 = False
-
-
 
 
 
@@ -924,4 +902,6 @@ with c3:
         _scroll_top()
         time.sleep(0.18)
         _rerun()
+
+
 
