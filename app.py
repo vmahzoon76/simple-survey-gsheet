@@ -202,10 +202,12 @@ def ws_to_df(ws):
     recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
 
-def append_dict(ws, d):
-    headers = _retry_gs(ws.row_values, 1)
+def append_dict(ws, d, headers=None):
+    if headers is None:
+        headers = _retry_gs(ws.row_values, 1)
     row = [d.get(h, "") for h in headers]
     _retry_gs(ws.append_row, row, value_input_option="USER_ENTERED")
+
 
 # ================== App state ==================
 def init_state():
