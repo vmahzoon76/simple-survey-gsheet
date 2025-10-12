@@ -36,8 +36,6 @@ def _read_ws_df(sheet_id, ws_title):
     recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
 
-
-
 def _scroll_top():
     """
     Aggressive scroll-to-top:
@@ -76,7 +74,7 @@ def _scroll_top():
                 }
               } catch(e){}
 
-              // focus anchor (preventScroll true not supported everywhere, but trying helps)
+              // focus anchor
               try {
                 var el = document.getElementById('top');
                 if (el && typeof el.focus === 'function') { el.focus(); }
@@ -208,6 +206,66 @@ def append_dict(ws, d, headers=None):
     row = [d.get(h, "") for h in headers]
     _retry_gs(ws.append_row, row, value_input_option="USER_ENTERED")
 
+# ================== NEW: simple “click-to-highlight” helpers ==================
+def _chunk_note(text):
+    """
+    Lightweight chunker:
+      - keeps original line breaks as logical units
+      - for long lines, splits on '. ' or ';' and groups small pieces so chunks are readable
+    """
+    chunks = []
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+
+        parts = []
+        buf = []
+        # coarse sentence-ish split
+        for tok in line.replace(";", ". ").split(". "):
+            tok = tok.strip()
+            if not tok:
+                continue
+            buf.append(tok)
+            # group small tokens to avoid tiny fragments
+            if sum(len(x) for x in buf) > 140:
+                parts.append(". ".join(buf))
+                buf = []
+        if buf:
+            parts.append(". ".join(buf))
+        if not parts:
+            parts = [line]
+        chunks.extend(parts)
+    return chunks
+
+def _highlight_picker(summary_text, case_id, default_saved=""):
+    """
+    Renders a simple click-to-highlight UI: one checkbox per chunk.
+    Returns the concatenated highlighted text (joined by newlines).
+    Uses unique keys per (case_id, index) so selections stick while navigating.
+    """
+    chunks = _chunk_note(summary_text)
+    selected = []
+
+    st.markdown("**Click-to-highlight (easy)**")
+    st.caption("Check the lines that you want to include as your highlight. The text area below will auto-fill (you can still edit it).")
+
+    # compact two-column layout for faster scanning
+    cA, cB = st.columns(2)
+    for i, chunk in enumerate(chunks):
+        col = cA if i % 2 == 0 else cB
+        with col:
+            key = f"hl_{case_id}_{i}"
+            if st.checkbox(chunk, key=key):
+                selected.append(chunk)
+
+    st.caption(f"Selected: **{len(selected)}** line(s)")
+
+    # If nothing selected yet, show any previously saved text (when resuming)
+    if not selected and default_saved:
+        return default_saved
+
+    return "\n".join(selected)
 
 # ================== App state ==================
 def init_state():
@@ -279,17 +337,13 @@ ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
-
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
-
-
 if admissions.empty:
     st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
     st.stop()
-
 
 # ===== Resume progress for this reviewer (run once per sign-in) =====
 if st.session_state.entered and not st.session_state.get("progress_initialized"):
@@ -342,7 +396,6 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
     time.sleep(0.15)
     _rerun()
 
-
 # ================== Current case ==================
 if st.session_state.case_idx >= len(admissions):
     st.success("All admissions completed. Thank you!")
@@ -378,14 +431,59 @@ with left:
 with right:
     if st.session_state.step == 1:
         st.info("Step 1: Narrative only. Do not use structured data.")
+
+        # -------- NEW: Click-to-highlight picker before the form --------
+        picked = _highlight_picker(
+            summary_text=summary,
+            case_id=case_id,
+            default_saved=st.session_state.get("q1_highlight", "")
+        )
+
+        st.subheader("Step 1 — Questions (Narrative Only)")
+        with st.form("step1_form", clear_on_submit=False):
+            q_aki = st.radio(
+                "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+                ["Yes", "No"], horizontal=True, key="q1_aki"
+            )
+            # Pre-fill the textarea with the picked lines; reviewers may edit freely.
+            q_highlight = st.text_area(
+                "Highlighted snippet(s) that impacted your conclusion (auto-filled from checkboxes above; you can edit):",
+                value=picked,
+                height=140,
+                key="q1_highlight"
+            )
+            q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
+            q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+
+            submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
+
+        if submitted1:
+            try:
+                st.session_state.saving1 = True
+                row = {
+                    "timestamp_utc": datetime.utcnow().isoformat(),
+                    "reviewer_id": st.session_state.reviewer_id,
+                    "case_id": case_id,
+                    "step": 1,
+                    "q_aki": q_aki,
+                    "q_highlight": st.session_state.get("q1_highlight", "").strip(),
+                    "q_rationale": st.session_state.get("q1_rationale", "").strip(),
+                    "q_confidence": st.session_state.get("q1_conf", ""),
+                    "q_reasoning": ""
+                }
+                append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+                st.success("Saved Step 1.")
+                st.session_state.step = 2
+                st.session_state.jump_to_top = True
+                _scroll_top()
+                time.sleep(0.25)
+                _rerun()
+            finally:
+                st.session_state.saving1 = False
+
     else:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
-
-        # ensure we nudge to top when entering step 2 (defensive)
-        # (we set jump_to_top before rerun on transitions; leave this commented unless needed)
-        # st.session_state.jump_to_top = True
-        # _scroll_top()
 
         if not scr.empty:
             st.markdown("**Serum Creatinine (mg/dL)**")
@@ -413,88 +511,44 @@ with right:
         else:
             st.warning("No UO values for this case.")
 
+        st.subheader("Step 2 — Questions (Full Context)")
+        with st.form("step2_form", clear_on_submit=False):
+            q_aki2 = st.radio(
+                "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
+                ["Yes", "No"], horizontal=True, key="q2_aki"
+            )
+            q_reasoning = st.text_area(
+                "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
+                height=180, key="q2_reasoning"
+            )
+            submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
+
+        if submitted2:
+            try:
+                st.session_state.saving2 = True
+                row = {
+                    "timestamp_utc": datetime.utcnow().isoformat(),
+                    "reviewer_id": st.session_state.reviewer_id,
+                    "case_id": case_id,
+                    "step": 2,
+                    "q_aki": q_aki2,
+                    "q_highlight": "",
+                    "q_rationale": st.session_state.get("q2_reasoning", "").strip(),  # keep if you want both; otherwise drop the column later
+                    "q_confidence": "",
+                    "q_reasoning": st.session_state.get("q2_reasoning", "").strip()
+                }
+                append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+                st.success("Saved Step 2.")
+                st.session_state.step = 1
+                st.session_state.case_idx += 1
+                st.session_state.jump_to_top = True
+                _scroll_top()
+                time.sleep(0.25)
+                _rerun()
+            finally:
+                st.session_state.saving2 = False
+
 st.markdown("---")
-
-# ================== Questions & Saving ==================
-if st.session_state.step == 1:
-    st.subheader("Step 1 — Questions (Narrative Only)")
-    with st.form("step1_form", clear_on_submit=False):
-        q_aki = st.radio(
-            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
-            ["Yes", "No"], horizontal=True, key="q1_aki"
-        )
-        q_highlight = st.text_area(
-            "Please highlight (paste) any specific text in the note that impacted your conclusion.",
-            height=120, key="q1_highlight"
-        )
-        q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
-        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
-
-        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
-
-    if submitted1:
-        try:
-            st.session_state.saving1 = True
-            row = {
-                "timestamp_utc": datetime.utcnow().isoformat(),
-                "reviewer_id": st.session_state.reviewer_id,
-                "case_id": case_id,
-                "step": 1,
-                "q_aki": q_aki,
-                "q_highlight": q_highlight,
-                "q_rationale": q_rationale,
-                "q_confidence": q_conf,
-                "q_reasoning": ""
-            }
-            append_dict(ws_resp, row, headers=st.session_state.resp_headers)  # note: updated append_dict below
-            st.success("Saved Step 1.")
-            st.session_state.step = 2
-            st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
-            _rerun()
-        finally:
-            st.session_state.saving1 = False
-
-
-else:
-    st.subheader("Step 2 — Questions (Full Context)")
-    with st.form("step2_form", clear_on_submit=False):
-        q_aki2 = st.radio(
-            "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
-            ["Yes", "No"], horizontal=True, key="q2_aki"
-        )
-        q_reasoning = st.text_area(
-            "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
-            height=180, key="q2_reasoning"
-        )
-        submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
-
-    if submitted2:
-        try:
-            st.session_state.saving2 = True
-            row = {
-                "timestamp_utc": datetime.utcnow().isoformat(),
-                "reviewer_id": st.session_state.reviewer_id,
-                "case_id": case_id,
-                "step": 2,
-                "q_aki": q_aki2,
-                "q_highlight": "",
-                "q_rationale": q_reasoning,  # keep if you want both; otherwise drop this field from headers later
-                "q_confidence": "",
-                "q_reasoning": q_reasoning
-            }
-            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
-            st.success("Saved Step 2.")
-            st.session_state.step = 1
-            st.session_state.case_idx += 1
-            st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
-            _rerun()
-        finally:
-            st.session_state.saving2 = False
-
 
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
