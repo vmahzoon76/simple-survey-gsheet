@@ -553,44 +553,38 @@ with right:
 st.markdown("---")
 
 # ================== Questions & Saving ==================
+# ================== Step 1 ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
+
+    # ---- Move highlighter OUTSIDE the form ----
+    st.markdown("**Highlight the exact text that influenced your conclusion**")
+    hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
+    if isinstance(hl_val, dict) and hl_val.get("highlights"):
+        with st.expander("Your selected highlights (preview)"):
+            st.markdown(hl_val["html"], unsafe_allow_html=True)
+
+    # ---- Then start your Streamlit form ----
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
-
-        st.markdown("**Highlight the exact text that influenced your conclusion**")
-        hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
-        
-        # Optional live display of chosen snippets for the reviewer
-        if isinstance(hl_val, dict) and hl_val.get("highlights"):
-            with st.expander("Your selected highlights (preview)"):
-                st.markdown(hl_val["html"], unsafe_allow_html=True)
-
-        
-
-
-        
         q_rationale = st.text_area("Please provide a brief rationale for your assessment.", height=140, key="q1_rationale")
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
-
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
     if submitted1:
         try:
             st.session_state.saving1 = True
-            # Default to empty if nothing selected yet
             hl_json = json.dumps(hl_val["highlights"]) if isinstance(hl_val, dict) else "[]"
-    
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                "q_highlight": hl_json,          # <-- store JSON of selections
+                "q_highlight": hl_json,
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
                 "q_reasoning": ""
@@ -604,6 +598,7 @@ if st.session_state.step == 1:
             _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 
 
