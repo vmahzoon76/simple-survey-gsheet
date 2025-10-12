@@ -520,4 +520,3 @@ with c3:
 
 
 
-read this app to learn what I am doing. do not repeat just know what I am doing
