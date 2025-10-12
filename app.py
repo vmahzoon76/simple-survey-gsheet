@@ -1,3 +1,7 @@
+consider this code: 
+
+
+
 import os
 import json
 import time
@@ -22,13 +26,6 @@ st.title("AKI Expert Review")
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
 # -------------------- Helpers --------------------
-
-import re
-
-def _resp_ws_title_for(reviewer_id: str) -> str:
-    """Make a sheet-safe, reasonably short tab name for this reviewer."""
-    base = re.sub(r'[^A-Za-z0-9 _-]+', '_', reviewer_id).strip() or "anon"
-    return f"responses__{base[:80]}"  # Sheets tab limit is 100; we stay under it
 
 from streamlit.components.v1 import html as _html
 import html as _py_html
@@ -349,33 +346,23 @@ def _open_sheet_cached():
 def get_or_create_ws(sh, title, headers=None):
     """
     Get a worksheet by title; create with headers if missing.
-    Uses _retry_gs around worksheet operations to reduce transient failures.
+    Uses _retry_gs around worksheet and worksheet operations to reduce transient failures.
     """
     try:
-        # Try to open (may raise WorksheetNotFound directly)
-        ws = sh.worksheet(title)  # don't wrap so we can catch the specific exception
-    except WorksheetNotFound:
-        # Create if missing
-        ws = _retry_gs(
-            sh.add_worksheet,
-            title=title,
-            rows=1000,
-            cols=max(10, (len(headers) if headers else 10)),
-        )
+        ws = _retry_gs(sh.worksheet, title)
+    except RuntimeError:
+        # probably not found -> create
+        ws = _retry_gs(sh.add_worksheet, title=title, rows=1000, cols=max(10, (len(headers) if headers else 10)))
         if headers:
             _retry_gs(ws.update, [headers])
-    except APIError as e:
-        # Transient error when fetching worksheet -> retry the open once via _retry_gs
-        ws = _retry_gs(sh.worksheet, title)
 
     # Ensure header row exists and merge non-destructively
     if headers:
         try:
             existing = _retry_gs(ws.row_values, 1)
-        except APIError as e:
-            st.warning(
-                f"Could not read header row for worksheet '{title}' right now; continuing. ({e})"
-            )
+        except RuntimeError as e:
+            # Non-fatal: warn and continue. App can still append rows with headers in unknown order.
+            st.warning(f"Could not read header row for worksheet '{title}' right now; continuing. ({e})")
             return ws
 
         if not existing:
@@ -388,9 +375,7 @@ def get_or_create_ws(sh, title, headers=None):
             if ws.col_count < len(merged):
                 _retry_gs(ws.resize, rows=ws.row_count, cols=len(merged))
             _retry_gs(ws.update, "A1", [merged])
-
     return ws
-
 
 def ws_to_df(ws):
     recs = _retry_gs(ws.get_all_records)
@@ -442,9 +427,6 @@ if not st.session_state.entered:
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
-
-st.session_state.resp_ws_title = _resp_ws_title_for(st.session_state.reviewer_id)
-
 # ================== Load data from Google Sheets ==================
 try:
     sh = _open_sheet_cached()
@@ -478,23 +460,16 @@ resp_headers = [
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
-# Shared, read-only tabs:
-ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
-ws_labs = get_or_create_ws(sh, "labs", labs_headers)
-
-# Reviewer-specific responses tab:
-resp_ws_title = st.session_state.resp_ws_title
-ws_resp = get_or_create_ws(sh, resp_ws_title, resp_headers)
+ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
 # Cache the response headers once so we don’t re-read them on every save
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
-# Load dataframes
+
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
-responses = _read_ws_df(st.secrets["gsheet_id"], resp_ws_title)  # <-- only this reviewer’s responses
-
+responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
 
 
@@ -814,3 +789,4 @@ with c3:
 
 
 
+If reviewer 1 writes in a specific sheet and reviewer 2 in another, would that solve the problem? how to do it in the code? do it in a simple way and take care of everything
