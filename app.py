@@ -5,15 +5,14 @@ from datetime import datetime
 
 import pandas as pd
 import streamlit as st
-from streamlit.components.v1 import html as _html
-from streamlit_javascript import st_javascript  # <–– NEW
+from streamlit.components.v1 import html as _html, components
 
 # Optional Google Sheets support
 USE_GSHEETS = True
 try:
     import gspread
     from oauth2client.service_account import ServiceAccountCredentials
-    from gspread.exceptions import APIError, SpreadsheetNotFound, WorksheetNotFound
+    from gspread.exceptions import APIError, SpreadsheetNotFound
 except Exception:
     USE_GSHEETS = False
 
@@ -104,9 +103,7 @@ def _open_sheet_cached():
         try:
             return client.open_by_key(sheet_id)
         except SpreadsheetNotFound:
-            raise RuntimeError(
-                "Could not open the Google Sheet by ID. Share it with the service account email as Editor."
-            )
+            raise RuntimeError("Could not open the Google Sheet by ID. Share it with the service account email as Editor.")
         except APIError as e:
             last_err = e
             time.sleep(1.2 * (i + 1))
@@ -202,7 +199,7 @@ if admissions.empty:
     st.error("Admissions sheet is empty.")
     st.stop()
 
-# Resume progress
+# ================== Resume progress ==================
 if st.session_state.entered and not st.session_state.get("progress_initialized"):
     try:
         resp = responses.copy()
@@ -269,30 +266,54 @@ left, right = st.columns([2, 3], gap="large")
 
 with left:
     st.markdown("**Discharge Summary**")
-    # --- Highlighting block ---
+
+    # --- Highlighting block (auto scroll) ---
     _html(f"""
-    <div id="summary" style="
-        border:1px solid #ddd;
-        padding:12px;
-        border-radius:6px;
-        background:#fafafa;
-        white-space: pre-wrap;
-        font-family: 'Source Sans Pro', sans-serif;
+    <div id="summary" contenteditable="false" style="
+      border:1px solid #ddd;
+      padding:16px;
+      border-radius:8px;
+      background:#fafafa;
+      white-space: pre-wrap;
+      font-family: 'Source Sans Pro', sans-serif;
+      overflow-y: auto;
+      max-height: 80vh;
     ">{summary}</div>
+
     <script>
     const div = document.getElementById('summary');
     div.addEventListener('mouseup', function() {{
-        const sel = window.getSelection();
-        const text = sel.toString();
-        if (text.length > 0) {{
-            window.parent.postMessage({{isStreamlitMessage:true, type:'selected_text', text:text}}, '*');
-        }}
+      let sel = window.getSelection();
+      let text = sel.toString();
+      if (text.length > 0) {{
+        let range = sel.getRangeAt(0);
+        let mark = document.createElement('mark');
+        mark.style.backgroundColor = '#fff176';
+        range.surroundContents(mark);
+        sel.removeAllRanges();
+        window.parent.postMessage({{
+          isStreamlitMessage:true,
+          type:'selected_text',
+          text: mark.textContent
+        }}, '*');
+      }}
     }});
     </script>
-    """, height=400)
+    """, height=0, scrolling=True)
 
-    # --- capture highlight ---
-    highlighted = st_javascript("await window.highlightedText || ''")
+    # --- listener to capture highlighted text ---
+    components.html("""
+    <script>
+    window.addEventListener('message', (event) => {
+        const data = event.data;
+        if (data && data.isStreamlitMessage && data.type === 'selected_text') {
+            window.parent.postMessage({isStreamlitMessage:true, type:'streamlit:setComponentValue', value:data.text}, '*');
+        }
+    });
+    </script>
+    """, height=0)
+
+    highlighted = st.experimental_get_query_params().get("selected_text", [""])[0]
     if highlighted:
         st.session_state['highlighted_text'] = highlighted
     if st.session_state.get("highlighted_text"):
@@ -311,23 +332,13 @@ with right:
                 y=alt.Y("scr:Q", title="mg/dL")
             )
             st.altair_chart(ch_scr, use_container_width=True)
-            st.caption("Table — SCr:")
-            st.dataframe(scr[["timestamp", "value", "unit"]].rename(columns={"value": "scr"}), use_container_width=True)
-        else:
-            st.warning("No SCr values.")
         if not uo.empty:
             st.markdown("**Urine Output (mL/kg/h)**" + (f" — weight: {weight} kg" if weight else ""))
             ch_uo = alt.Chart(uo.rename(columns={"timestamp": "time", "value": "uo"})).mark_line(point=True).encode(
                 x=alt.X("time:T", title="Time"),
                 y=alt.Y("uo:Q", title="mL/kg/h")
             )
-            ref = pd.DataFrame({"time": [uo["timestamp"].min(), uo["timestamp"].max()], "ref": [0.5, 0.5]})
-            ch_ref = alt.Chart(ref).mark_rule(strokeDash=[6, 6]).encode(x="time:T", y="ref:Q")
-            st.altair_chart(ch_uo + ch_ref, use_container_width=True)
-            st.caption("Table — UO:")
-            st.dataframe(uo[["timestamp", "value", "unit"]].rename(columns={"value": "uo"}), use_container_width=True)
-        else:
-            st.warning("No UO values.")
+            st.altair_chart(ch_uo, use_container_width=True)
 
 st.markdown("---")
 
@@ -343,7 +354,6 @@ if st.session_state.step == 1:
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
 
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
-
     if submitted1:
         try:
             st.session_state.saving1 = True
@@ -405,7 +415,7 @@ else:
             st.session_state.saving2 = False
 
 # Navigation
-c1, c2, c3 = st.columns(3)
+c1, _, c3 = st.columns(3)
 with c1:
     if st.button("◀ Back"):
         if st.session_state.step == 2:
