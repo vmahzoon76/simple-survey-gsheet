@@ -59,15 +59,14 @@ from streamlit.components.v1 import html as _html
 import json
 
 
-def inline_highlighter(text: str, case_id: str, height: int = 560):
+def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560):
     """
-    Render the *actual* discharge summary as a selectable, live-highlightable box.
-    Highlights appear inline (using <mark>) in the same element.
-    The highlighted HTML is auto-synced to the page URL as ?hl_step1_<case_id>=...
-    so Python can read it on submit (Step 1 only).
+    One-box highlighter rendered as the *actual* discharge summary text.
+    Highlights show inline and auto-sync to a step-specific query param:
+      ?hl_{step_key}_{case_id}=<urlencoded html>.
     """
     safe_text = _py_html.escape(text)
-    qp_key = f"hl_step1_{case_id}"   # step-specific key so Step 2 never sees/keeps it
+    qp_key = f"hl_{step_key}_{case_id}"   # step-specific key (e.g., hl_step1_<id> or hl_step2_<id>)
 
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
@@ -88,7 +87,7 @@ def inline_highlighter(text: str, case_id: str, height: int = 560):
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
         const qpKey = {json.dumps(qp_key)};
-        let ranges = []; // [{{start,end}} in text offsets]  <-- braces escaped
+        let ranges = []; // [{{start,end}} in text offsets]
 
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
@@ -160,13 +159,14 @@ def inline_highlighter(text: str, case_id: str, height: int = 560):
           render();
         }};
 
-        // Ensure a final sync right before parent "Save Step 1" is clicked
+        // Ensure a final sync right before parent "Save Step 1/2" is clicked
         const hookSave = () => {{
           try {{
             const btns = window.parent.document.querySelectorAll('button');
             btns.forEach(b => {{
               if (b.__hl_hooked__) return;
-              if ((b.textContent||'').includes('Save Step 1')) {{
+              const t = (b.textContent||'');
+              if (t.includes('Save Step 1') || t.includes('Save Step 2')) {{
                 b.__hl_hooked__ = true;
                 b.addEventListener('click', () => syncToUrl(), {{capture:true}});
               }}
@@ -182,6 +182,7 @@ def inline_highlighter(text: str, case_id: str, height: int = 560):
     </div>
     """
     _html(code, height=height + 70)
+
 
 
 
@@ -569,8 +570,16 @@ adm_headers = ["case_id", "title", "discharge_summary", "weight_kg"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
     "timestamp_utc", "reviewer_id", "case_id", "step",
-    "q_aki", "q_highlight", "q_rationale", "q_confidence", "q_reasoning"
+    "aki",                     # "Yes"/"No"
+    "highlight_html",          # <mark>...</mark> from this step
+    "rationale",               # free-text rationale (Step 1) or empty on Step 2
+    "confidence",              # 1–5 for both steps
+    "reasoning",               # think-aloud (Step 2) or empty on Step 1
+    "aki_etiology",            # Step 2 only when aki == "Yes"
+    "aki_stage",               # Step 2 only when aki == "Yes"
+    "aki_onset_explanation"    # Step 2 only when aki == "Yes"
 ]
+
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
@@ -674,7 +683,11 @@ left, right = st.columns([3, 4], gap="large")
 
 with left:
     st.markdown("**Discharge Summary (highlight directly in the text below)**")
-    inline_highlighter(summary, case_id=case_id, height=560)  # taller box
+    if st.session_state.step == 1:
+        inline_highlighter(summary, case_id=case_id, step_key="step1", height=800)
+    else:
+        inline_highlighter(summary, case_id=case_id, step_key="step2", height=800)
+
 
 
 with right:
@@ -727,7 +740,12 @@ if st.session_state.step == 1:
             ["Yes", "No"], horizontal=True, key="q1_aki"
         )
 
-        # no text area; just confidence
+        # Bring back rationale
+        q_rationale = st.text_area(
+            "Please provide a brief rationale for your assessment.",
+            height=140, key="q1_rationale"
+        )
+
         q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
 
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
@@ -736,7 +754,7 @@ if st.session_state.step == 1:
         try:
             st.session_state.saving1 = True
 
-            # Pull Step-1 highlight HTML from the step-specific query param and save it
+            # Read Step-1 highlights
             qp_key = f"hl_step1_{case_id}"
             qp = st.query_params
             hl_html = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
@@ -746,27 +764,27 @@ if st.session_state.step == 1:
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
-                "q_aki": q_aki,
-                "q_highlight": hl_html,   # <mark>…</mark> saved here
-                "q_rationale": "",        # removed question → save empty
-                "q_confidence": q_conf,
-                "q_reasoning": ""
+                "aki": q_aki,
+                "highlight_html": hl_html,
+                "rationale": q_rationale,
+                "confidence": q_conf,
+                "reasoning": "",
+                "aki_etiology": "",
+                "aki_stage": "",
+                "aki_onset_explanation": ""
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
 
-            # Clear Step-1 highlight param so it never bleeds into Step 2 or next case
+            # Clear Step-1 param so it won’t bleed anywhere
             try:
-                # Streamlit ≥1.30
                 st.query_params.pop(qp_key, None)
             except Exception:
-                # Older fallback (nuke all)
                 st.query_params.clear()
 
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
-            _scroll_top(); time.sleep(0.25)
-            _rerun()
+            _scroll_top(); time.sleep(0.25); _rerun()
         finally:
             st.session_state.saving1 = False
 
@@ -777,50 +795,90 @@ if st.session_state.step == 1:
 
 
 
-
-
-
 else:
     st.subheader("Step 2 — Questions (Full Context)")
+
+    # Proactively clear any leftover Step-1 highlight (safety)
     try:
         st.query_params.pop(f"hl_step1_{case_id}", None)
     except Exception:
         pass
+
     with st.form("step2_form", clear_on_submit=False):
         q_aki2 = st.radio(
             "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q2_aki"
         )
+
+        # Confidence for Step 2 as well
+        q_conf2 = st.slider("How confident are you in your Step 2 assessment? (1–5)", 1, 5, 3, key="q2_conf")
+
+        # Think-aloud reasoning (keep)
         q_reasoning = st.text_area(
             "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
             height=180, key="q2_reasoning"
         )
+
+        # Conditional fields if AKI == Yes
+        q_etiology = ""
+        q_stage = ""
+        q_onset_exp = ""
+
+        if q_aki2 == "Yes":
+            q_etiology = st.selectbox(
+                "What was the reason behind AKI?",
+                ["Pre-renal", "Intrinsic", "Post-renal", "Multi-factorial"], key="q2_etiology"
+            )
+            q_stage = st.selectbox(
+                "What stage of AKI do you believe the patient reached?",
+                ["Stage 1", "Stage 2", "Stage 3", "Unclear"], key="q2_stage"
+            )
+            q_onset_exp = st.text_area(
+                "When was the AKI onset? Explain how you concluded it.",
+                key="q2_onset_explanation", height=160
+            )
+
         submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
 
     if submitted2:
         try:
             st.session_state.saving2 = True
+
+            # Read Step-2 highlights
+            qp_key2 = f"hl_step2_{case_id}"
+            qp = st.query_params
+            hl_html2 = urllib.parse.unquote(qp.get(qp_key2, "")) if qp_key2 in qp else ""
+
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 2,
-                "q_aki": q_aki2,
-                "q_highlight": "",
-                "q_rationale": q_reasoning,  # keep if you want both; otherwise drop this field from headers later
-                "q_confidence": "",
-                "q_reasoning": q_reasoning
+                "aki": q_aki2,
+                "highlight_html": hl_html2,
+                "rationale": "",                 # Step 2: keep empty (rationale belongs to Step 1)
+                "confidence": q_conf2,
+                "reasoning": q_reasoning,        # think-aloud
+                "aki_etiology": (q_etiology if q_aki2 == "Yes" else ""),
+                "aki_stage": (q_stage if q_aki2 == "Yes" else ""),
+                "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+
+            # Clear Step-2 highlight param and advance
+            try:
+                st.query_params.pop(qp_key2, None)
+            except Exception:
+                st.query_params.clear()
+
             st.success("Saved Step 2.")
             st.session_state.step = 1
             st.session_state.case_idx += 1
             st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
-            _rerun()
+            _scroll_top(); time.sleep(0.25); _rerun()
         finally:
             st.session_state.saving2 = False
+
 
 
 # Navigation helpers
