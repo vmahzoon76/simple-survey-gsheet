@@ -73,7 +73,7 @@ def highlight_widget_inside_form(text: str, case_id: str, height: int = 280):
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;">
       <!-- Buttons at top -->
       <div style="display:flex; gap:8px; margin-bottom:8px;">
-        <button id="addBtn" type="button">Add selection</button>
+        <button id="addBtn" type="button">Highlight</button>
         <button id="clearBtn" type="button">Clear</button>
       </div>
 
