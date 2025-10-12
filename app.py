@@ -552,22 +552,26 @@ st.markdown("---")
 # ================== Questions & Saving ==================
 # ================== Step 1 ==================
 # ================== Step 1 ==================
+# ================== Step 1 ==================
 if st.session_state.step == 1:
     st.subheader("Step 1 — Questions (Narrative Only)")
 
-    # ---- Highlight widget ----
+    # ---- Highlighter (keep outside the form)
     st.markdown("**Highlight the exact text that influenced your conclusion**")
     hl_val = highlight_widget(summary, key=f"hl_{case_id}", height=420)
 
-    # Persist the latest highlight in session state
-    if isinstance(hl_val, dict) and hl_val.get("highlights"):
-        st.session_state[f"hl_{case_id}"] = hl_val
-        with st.expander("Your selected highlights (preview)"):
-            st.markdown(hl_val["html"], unsafe_allow_html=True)
-    elif f"hl_{case_id}" in st.session_state:
-        hl_val = st.session_state[f"hl_{case_id}"]  # reuse previous value
+    # Cache the latest highlight value so it survives the submit-triggered rerun
+    cache_key = f"hl_cache_{case_id}"
+    if isinstance(hl_val, dict):
+        st.session_state[cache_key] = hl_val
 
-    # ---- Form ----
+    # Optional preview of current/cached highlights
+    _show = hl_val if isinstance(hl_val, dict) else st.session_state.get(cache_key)
+    if isinstance(_show, dict) and _show.get("html"):
+        with st.expander("Your selected highlights (preview)"):
+            st.markdown(_show["html"], unsafe_allow_html=True)
+
+    # ---- Now begin the form (this comes AFTER the highlight widget)
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
@@ -577,43 +581,45 @@ if st.session_state.step == 1:
             "Please provide a brief rationale for your assessment.",
             height=140, key="q1_rationale"
         )
-        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+        q_conf = st.slider(
+            "How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf"
+        )
+        submitted1 = st.form_submit_button(
+            "Save Step 1 ✅", disabled=st.session_state.get("saving1", False)
+        )
 
-        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
-
-    # ---- Save ----
     if submitted1:
         try:
             st.session_state.saving1 = True
+            cached = st.session_state.get(cache_key)
+            if isinstance(cached, dict):
+                hl_json = json.dumps(cached.get("highlights", []))
+                hl_html = cached.get("html", "")
+            else:
+                hl_json = "[]"
+                hl_html = ""
 
-            # Choose which form to store (HTML or JSON)
-            hl_json = json.dumps(hl_val["highlights"]) if isinstance(hl_val, dict) else "[]"
-            hl_html = hl_val.get("html", "") if isinstance(hl_val, dict) else ""
-
-            # Save HTML instead of JSON (optional)
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
                 "q_aki": q_aki,
-                # you can swap these two lines if you prefer HTML:
-                "q_highlight": hl_html,    # << store HTML highlight string
-                # "q_highlight": hl_json,  # << or keep JSON version
+                "q_highlight": hl_json,      # JSON offsets + text
                 "q_rationale": q_rationale,
                 "q_confidence": q_conf,
-                "q_reasoning": ""
+                "q_reasoning": "",
+                # optional if you added this column
+                # "q_highlight_html": hl_html,
             }
-
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
             st.success("Saved Step 1.")
             st.session_state.step = 2
             st.session_state.jump_to_top = True
-            _scroll_top()
-            time.sleep(0.25)
-            _rerun()
+            _scroll_top(); time.sleep(0.25); _rerun()
         finally:
             st.session_state.saving1 = False
+
 
 
 
