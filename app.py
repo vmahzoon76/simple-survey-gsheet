@@ -443,7 +443,7 @@ except Exception:
     pass
 
 # ================== Worksheets (create if missing) ==================
-adm_headers = ["case_id", "title", "discharge_summary", "weight_kg"]
+adm_headers = ["case_id", "title", "hadm_id", "DS_step1", "DS_step2", "weight", "admittime"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
     "timestamp_utc", "reviewer_id", "case_id", "step",
@@ -536,10 +536,13 @@ if st.session_state.case_idx >= len(admissions):
     st.stop()
 
 case = admissions.iloc[st.session_state.case_idx]
-case_id = str(case.get("case_id", ""))
-title = str(case.get("title", ""))
-summary = str(case.get("discharge_summary", ""))
-weight = case.get("weight_kg", "")
+case_id   = str(case.get("case_id", ""))
+title     = str(case.get("title", ""))
+summary1  = str(case.get("DS_step1", ""))   # Step 1 text
+summary2  = str(case.get("DS_step2", ""))   # Step 2 text
+weight    = case.get("weight", "")
+admit_ts  = case.get("admittime")           # pandas.Timestamp or NaT
+
 
 st.caption(
     f"Reviewer: **{st.session_state.reviewer_id}** • "
@@ -550,10 +553,21 @@ st.markdown(f"### {case_id} — {title}")
 
 # Filter labs for this case
 case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
-if not case_labs.empty:
-    case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
-scr = case_labs[case_labs["kind"].astype(str).str.lower() == "scr"].sort_values("timestamp")
-uo = case_labs[case_labs["kind"].astype(str).str.lower() == "uo"].sort_values("timestamp")
+
+# timestamp should already be datetime, but this is harmless if it is
+case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
+
+# Compute hours since admission (will be NaN if admittime is missing)
+if pd.notna(admit_ts):
+    case_labs["hours"] = (case_labs["timestamp"] - admit_ts).dt.total_seconds() / 3600.0
+else:
+    case_labs["hours"] = pd.NA
+
+# Normalize kind for filtering, retain original for display
+case_labs["_kind_lower"] = case_labs["kind"].astype(str).str.lower()
+
+scr = case_labs[case_labs["_kind_lower"] == "scr"].sort_values("timestamp").copy()
+uo  = case_labs[case_labs["_kind_lower"] != "scr"].sort_values("timestamp").copy()
 
 # ================== Layout ==================
 left, right = st.columns([3, 4], gap="large")
@@ -561,9 +575,10 @@ left, right = st.columns([3, 4], gap="large")
 with left:
     st.markdown("**Discharge Summary (highlight directly in the text below)**")
     if st.session_state.step == 1:
-        inline_highlighter(summary, case_id=case_id, step_key="step1", height=700)
+        inline_highlighter(summary1, case_id=case_id, step_key="step1", height=700)
     else:
-        inline_highlighter(summary, case_id=case_id, step_key="step2", height=700)
+        inline_highlighter(summary2, case_id=case_id, step_key="step2", height=700)
+
 
 
 
@@ -574,36 +589,59 @@ with right:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
 
-        # ensure we nudge to top when entering step 2 (defensive)
-        # (we set jump_to_top before rerun on transitions; leave this commented unless needed)
-        # st.session_state.jump_to_top = True
-        # _scroll_top()
+        # A small helper for axis title depending on admittime presence
+        x_title = "Hours since admission" if pd.notna(admit_ts) else "Time (no admission time found)"
 
+        # --------- SCr ----------
         if not scr.empty:
-            st.markdown("**Serum Creatinine (mg/dL)**")
-            ch_scr = alt.Chart(scr.rename(columns={"timestamp": "time", "value": "scr"})).mark_line(point=True).encode(
-                x=alt.X("time:T", title="Time"),
-                y=alt.Y("scr:Q", title="mg/dL")
-            )
+            src = scr.rename(columns={"value": "scr_value"})
+            # Prefer hours axis when possible; fall back to actual timestamp
+            if pd.notna(admit_ts) and src["hours"].notna().any():
+                ch_scr = alt.Chart(src).mark_line(point=True).encode(
+                    x=alt.X("hours:Q", title=x_title),
+                    y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
+                    tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]
+                )
+            else:
+                ch_scr = alt.Chart(src).mark_line(point=True).encode(
+                    x=alt.X("timestamp:T", title="Time"),
+                    y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
+                    tooltip=["timestamp:T", "scr_value:Q", "unit:N", "kind:N"]
+                )
+            st.markdown("**Serum Creatinine**")
             st.altair_chart(ch_scr, use_container_width=True)
             st.caption("Table — SCr:")
-            st.dataframe(scr[["timestamp", "value", "unit"]].rename(columns={"value": "scr"}), use_container_width=True)
+            scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
+            st.dataframe(scr_table, use_container_width=True)
         else:
             st.warning("No SCr values for this case.")
 
+        # --------- UO ----------
         if not uo.empty:
-            st.markdown("**Urine Output (mL/kg/h)**" + (f" — weight: {weight} kg" if weight else ""))
-            ch_uo = alt.Chart(uo.rename(columns={"timestamp": "time", "value": "uo"})).mark_line(point=True).encode(
-                x=alt.X("time:T", title="Time"),
-                y=alt.Y("uo:Q", title="mL/kg/h")
-            )
-            ref = pd.DataFrame({"time": [uo["timestamp"].min(), uo["timestamp"].max()], "ref": [0.5, 0.5]})
-            ch_ref = alt.Chart(ref).mark_rule(strokeDash=[6, 6]).encode(x="time:T", y="ref:Q")
-            st.altair_chart(ch_uo + ch_ref, use_container_width=True)
-            st.caption("Table — UO:")
-            st.dataframe(uo[["timestamp", "value", "unit"]].rename(columns={"value": "uo"}), use_container_width=True)
+            uox = uo.rename(columns={"value": "uo_value"})
+            # Prefer hours axis when possible; fall back to actual timestamp
+            if pd.notna(admit_ts) and uox["hours"].notna().any():
+                ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                    x=alt.X("hours:Q", title=x_title),
+                    y=alt.Y("uo_value:Q", title="Urine Output (mL)"),
+                    tooltip=["timestamp:T", "hours:Q", "uo_value:Q", "unit:N", "kind:N"]
+                )
+            else:
+                ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                    x=alt.X("timestamp:T", title="Time"),
+                    y=alt.Y("uo_value:Q", title="Urine Output (mL)"),
+                    tooltip=["timestamp:T", "uo_value:Q", "unit:N", "kind:N"]
+                )
+
+            st.markdown("**Urine Output**")
+            st.altair_chart(ch_uo, use_container_width=True)
+
+            st.caption("Table — UO (original item names retained in `kind`):")
+            uo_table = uox[["hours", "timestamp", "kind", "uo_value", "unit"]].rename(columns={"uo_value": "value"})
+            st.dataframe(uo_table, use_container_width=True)
         else:
             st.warning("No UO values for this case.")
+
 
 st.markdown("---")
 
