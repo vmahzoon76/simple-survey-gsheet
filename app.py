@@ -84,7 +84,7 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
                   max-height:{height}px; width:100%; box-sizing:border-box;"></div>
 
       <script>
-        // 1) Render once: escape + **bold** -> <strong>
+        // Render once with **bold** -> <strong>
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
                   .replaceAll('>','&gt;').replaceAll('"','&quot;')
@@ -107,91 +107,34 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           }} catch(e) {{}}
         }}
 
-        // --- Utilities to wrap selection with <mark> without losing <strong> ---
-        function isText(node) {{ return node && node.nodeType === Node.TEXT_NODE; }}
-
-        // Split a text node at offset, return [left, right] (right may be null at end)
-        function splitText(node, offset) {{
-          if (!isText(node)) return [null, null];
-          if (offset <= 0) return [null, node];
-          if (offset >= node.data.length) return [node, null];
-          const right = node.splitText(offset);
-          return [node, right];
-        }}
-
-        // Normalize the selection range to start/end inside TEXT nodes; split as needed
-        function normalizeRangeToText(range) {{
-          let {{ startContainer, startOffset, endContainer, endOffset }} = range;
-
-          // Fix start
-          if (!isText(startContainer)) {{
-            // descend to the first text node after start
-            let n = startContainer.childNodes[startOffset] || startContainer;
-            const walker = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
-            walker.currentNode = n.nodeType === 3 ? n : startContainer;
-            startContainer = (n.nodeType === 3) ? n : walker.nextNode();
-            startOffset = 0;
-          }}
-          // Fix end
-          if (!isText(endContainer)) {{
-            // find previous text node before end
-            const walker = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
-            walker.currentNode = endContainer;
-            let lastText = null, cur;
-            while ((cur = walker.nextNode())) lastText = cur;
-            if (!lastText) {{
-              const w2 = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
-              endContainer = w2.lastChild();
-            }} else {{
-              endContainer = lastText;
+        // Merge adjacent <mark> siblings for clean HTML
+        function mergeAdjacentMarks(root) {{
+          const marks = root.querySelectorAll('mark');
+          for (let i = 0; i < marks.length; i++) {{
+            const m = marks[i];
+            // Merge next sibling if it's also a mark
+            while (m.nextSibling && m.nextSibling.nodeType === 1 && m.nextSibling.tagName === 'MARK') {{
+              const next = m.nextSibling;
+              // move all children of next into m
+              while (next.firstChild) m.appendChild(next.firstChild);
+              next.remove();
             }}
-            endOffset = endContainer ? endContainer.data.length : 0;
-          }}
-
-          // Split start/end text nodes so range aligns exactly with node boundaries
-          if (isText(startContainer)) {{
-            const pair = splitText(startContainer, startOffset);
-            startContainer = pair[1] || startContainer; // the right piece starts the selection
-          }}
-          if (isText(endContainer)) {{
-            splitText(endContainer, endOffset); // splits endContainer; left piece ends the selection
-          }}
-
-          // Recompute normalized boundaries (first/last text nodes inside selection)
-          const newRange = document.createRange();
-          newRange.setStart(textEl, 0);
-          newRange.setEnd(textEl, textEl.childNodes.length);
-
-          // Collect text nodes within original range
-          const tw = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
-          const nodes = [];
-          let n;
-          while ((n = tw.nextNode())) {{
-            const r = document.createRange();
-            r.selectNodeContents(n);
-            if (range.compareBoundaryPoints(Range.END_TO_START, r) < 0 &&
-                range.compareBoundaryPoints(Range.START_TO_END, r) > 0) {{
-              nodes.push(n);
+            // If mark wrapped empty, unwrap
+            if (!m.textContent) {{
+              const p = m.parentNode;
+              p && p.removeChild(m);
             }}
           }}
-          return nodes;
         }}
 
-        function wrapNodesWithMark(textNodes) {{
-          textNodes.forEach((n) => {{
-            if (!n || !n.data) return;
-            const mark = document.createElement('mark');
-            n.parentNode.replaceChild(mark, n);
-            mark.appendChild(n); // keep text as child -> preserves surrounding <strong> structure
-          }});
-        }}
-
-        function clearMarks() {{
-          const marks = textEl.querySelectorAll('mark');
+        // Clear: unwrap all <mark> nodes
+        function clearMarks(root) {{
+          const marks = root.querySelectorAll('mark');
           marks.forEach(m => {{
-            const parent = m.parentNode;
-            while (m.firstChild) parent.insertBefore(m.firstChild, m);
-            parent.removeChild(m);
+            const p = m.parentNode;
+            if (!p) return;
+            while (m.firstChild) p.insertBefore(m.firstChild, m);
+            p.removeChild(m);
           }});
         }}
 
@@ -199,22 +142,39 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           const sel = window.getSelection();
           if (!sel || sel.rangeCount === 0) return;
           const rng = sel.getRangeAt(0);
-          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return;
 
-          // Normalize, then wrap text nodes inside selection
-          const nodes = normalizeRangeToText(rng);
-          if (nodes.length === 0) return;
-          wrapNodesWithMark(nodes);
-          sel.removeAllRanges(); // optional: clear selection
-          syncToUrl();
+          // Only work if selection is inside our box
+          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return;
+          if (rng.collapsed) return; // nothing selected
+
+          try {{
+            // Clone the exact selection contents
+            const frag = rng.extractContents(); // removes selection from DOM and collapses range
+            // Wrap it with <mark> and insert back at the original position
+            const mark = document.createElement('mark');
+            mark.appendChild(frag);
+            rng.insertNode(mark);
+
+            // Normalize: join adjacent marks produced by consecutive selections
+            mergeAdjacentMarks(textEl);
+
+            // Optional: clear selection to avoid accidental re-wrapping
+            sel.removeAllRanges();
+
+            syncToUrl();
+          }} catch (e) {{
+            // If selection crosses disallowed boundaries, fall back: do nothing silently
+            // (extractContents can throw for malformed ranges)
+            console.warn('Highlight error:', e);
+          }}
         }};
 
         document.getElementById('clearBtn').onclick = () => {{
-          clearMarks();
+          clearMarks(textEl);
           syncToUrl();
         }};
 
-        // Final sync before save
+        // Final sync before save buttons
         const hookSave = () => {{
           try {{
             const btns = window.parent.document.querySelectorAll('button');
@@ -237,6 +197,7 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
     </div>
     """
     _html(code, height=height + 70)
+
 
 
 
