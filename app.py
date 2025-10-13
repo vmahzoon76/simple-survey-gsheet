@@ -70,14 +70,7 @@ import json
 
 
 def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560):
-    """
-    One-box highlighter rendered as the *actual* discharge summary text.
-    Highlights show inline and auto-sync to a step-specific query param:
-      ?hl_{step_key}_{case_id}=<urlencoded html>.
-    Supports **bold** markdown (only) rendered to <strong>…</strong>.
-    """
-    safe_text = _py_html.escape(text)
-    qp_key = f"hl_{step_key}_{case_id}"   # step-specific key (e.g., hl_step1_<id> or hl_step2_<id>)
+    qp_key = f"hl_{step_key}_{case_id}"
 
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
@@ -86,97 +79,142 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
         <button id="clearBtn" type="button">Clear</button>
       </div>
 
-      <!-- The actual discharge summary text (one box only) -->
       <div id="text"
            style="border:1px solid #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
-                  max-height:{height}px; width:100%; box-sizing:border-box;">
-        {safe_text}
-      </div>
+                  max-height:{height}px; width:100%; box-sizing:border-box;"></div>
 
       <script>
-        const textEl = document.getElementById('text');
-        const addBtn = document.getElementById('addBtn');
-        const clearBtn = document.getElementById('clearBtn');
-        const qpKey = {json.dumps(qp_key)};
-        let ranges = []; // [{{start,end}} in text offsets]
-
+        // 1) Render once: escape + **bold** -> <strong>
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
                   .replaceAll('>','&gt;').replaceAll('"','&quot;')
                   .replaceAll("'",'&#039;');
         }}
-
-        // Minimal markdown: **bold** -> <strong>bold</strong> (after escaping)
-        function renderFragment(s) {{
-          const esc = escapeHtml(s);
+        function boldify(s) {{
+          const esc = escapeHtml(s.replace(/\\r\\n?/g,'\\n').replace(/[\\u200B-\\u200D\\uFEFF]/g,''));
           return esc.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
         }}
 
-        function merge(rs) {{
-          if (!rs.length) return rs;
-          rs.sort((a,b)=>a.start-b.start);
-          const out=[rs[0]];
-          for (let i=1;i<rs.length;i++) {{
-            const last=out[out.length-1], cur=rs[i];
-            if (cur.start <= last.end) last.end=Math.max(last.end, cur.end);
-            else out.push(cur);
-          }}
-          return out;
-        }}
-
-        function selectionOffsets() {{
-          const sel = window.getSelection();
-          if (!sel || sel.rangeCount===0) return null;
-          const rng = sel.getRangeAt(0);
-          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
-          const pre = document.createRange();
-          pre.setStart(textEl, 0);
-          pre.setEnd(rng.startContainer, rng.startOffset);
-          const start = pre.toString().length;
-          const len = rng.toString().length;
-          return len>0 ? {{start, end:start+len}} : null;
-        }}
-
-        function render() {{
-          const txt = textEl.textContent;
-          if (!ranges.length) {{
-            textEl.innerHTML = renderFragment(txt);
-          }} else {{
-            const rs = ranges.slice().sort((a,b)=>a.start-b.start);
-            let html='', cur=0;
-            for (const r of rs) {{
-              html += renderFragment(txt.slice(cur, r.start));
-              html += '<mark>' + renderFragment(txt.slice(r.start, r.end)) + '</mark>';
-              cur = r.end;
-            }}
-            html += renderFragment(txt.slice(cur));
-            textEl.innerHTML = html;
-          }}
-          syncToUrl();
-        }}
+        const qpKey = {json.dumps(qp_key)};
+        const textEl = document.getElementById('text');
+        textEl.innerHTML = boldify({json.dumps(text)});
 
         function syncToUrl() {{
           try {{
-            const html = textEl.innerHTML;
             const u = new URL(window.parent.location.href);
-            u.searchParams.set(qpKey, encodeURIComponent(html));
+            u.searchParams.set(qpKey, encodeURIComponent(textEl.innerHTML));
             window.parent.history.replaceState(null, '', u.toString());
-          }} catch(e) {{ /* ignore */ }}
+          }} catch(e) {{}}
         }}
 
-        addBtn.onclick = () => {{
-          const off = selectionOffsets();
-          if (!off) return;
-          ranges.push(off);
-          ranges = merge(ranges);
-          render();
-        }};
-        clearBtn.onclick = () => {{
-          ranges = [];
-          render();
+        // --- Utilities to wrap selection with <mark> without losing <strong> ---
+        function isText(node) {{ return node && node.nodeType === Node.TEXT_NODE; }}
+
+        // Split a text node at offset, return [left, right] (right may be null at end)
+        function splitText(node, offset) {{
+          if (!isText(node)) return [null, null];
+          if (offset <= 0) return [null, node];
+          if (offset >= node.data.length) return [node, null];
+          const right = node.splitText(offset);
+          return [node, right];
+        }}
+
+        // Normalize the selection range to start/end inside TEXT nodes; split as needed
+        function normalizeRangeToText(range) {{
+          let {{ startContainer, startOffset, endContainer, endOffset }} = range;
+
+          // Fix start
+          if (!isText(startContainer)) {{
+            // descend to the first text node after start
+            let n = startContainer.childNodes[startOffset] || startContainer;
+            const walker = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
+            walker.currentNode = n.nodeType === 3 ? n : startContainer;
+            startContainer = (n.nodeType === 3) ? n : walker.nextNode();
+            startOffset = 0;
+          }}
+          // Fix end
+          if (!isText(endContainer)) {{
+            // find previous text node before end
+            const walker = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
+            walker.currentNode = endContainer;
+            let lastText = null, cur;
+            while ((cur = walker.nextNode())) lastText = cur;
+            if (!lastText) {{
+              const w2 = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
+              endContainer = w2.lastChild();
+            }} else {{
+              endContainer = lastText;
+            }}
+            endOffset = endContainer ? endContainer.data.length : 0;
+          }}
+
+          // Split start/end text nodes so range aligns exactly with node boundaries
+          if (isText(startContainer)) {{
+            const pair = splitText(startContainer, startOffset);
+            startContainer = pair[1] || startContainer; // the right piece starts the selection
+          }}
+          if (isText(endContainer)) {{
+            splitText(endContainer, endOffset); // splits endContainer; left piece ends the selection
+          }}
+
+          // Recompute normalized boundaries (first/last text nodes inside selection)
+          const newRange = document.createRange();
+          newRange.setStart(textEl, 0);
+          newRange.setEnd(textEl, textEl.childNodes.length);
+
+          // Collect text nodes within original range
+          const tw = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
+          const nodes = [];
+          let n;
+          while ((n = tw.nextNode())) {{
+            const r = document.createRange();
+            r.selectNodeContents(n);
+            if (range.compareBoundaryPoints(Range.END_TO_START, r) < 0 &&
+                range.compareBoundaryPoints(Range.START_TO_END, r) > 0) {{
+              nodes.push(n);
+            }}
+          }}
+          return nodes;
+        }}
+
+        function wrapNodesWithMark(textNodes) {{
+          textNodes.forEach((n) => {{
+            if (!n || !n.data) return;
+            const mark = document.createElement('mark');
+            n.parentNode.replaceChild(mark, n);
+            mark.appendChild(n); // keep text as child -> preserves surrounding <strong> structure
+          }});
+        }}
+
+        function clearMarks() {{
+          const marks = textEl.querySelectorAll('mark');
+          marks.forEach(m => {{
+            const parent = m.parentNode;
+            while (m.firstChild) parent.insertBefore(m.firstChild, m);
+            parent.removeChild(m);
+          }});
+        }}
+
+        document.getElementById('addBtn').onclick = () => {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return;
+          const rng = sel.getRangeAt(0);
+          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return;
+
+          // Normalize, then wrap text nodes inside selection
+          const nodes = normalizeRangeToText(rng);
+          if (nodes.length === 0) return;
+          wrapNodesWithMark(nodes);
+          sel.removeAllRanges(); // optional: clear selection
+          syncToUrl();
         }};
 
-        // Ensure a final sync right before parent "Save Step 1/2" is clicked
+        document.getElementById('clearBtn').onclick = () => {{
+          clearMarks();
+          syncToUrl();
+        }};
+
+        // Final sync before save
         const hookSave = () => {{
           try {{
             const btns = window.parent.document.querySelectorAll('button');
@@ -195,14 +233,11 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
           hookSave();
         }} catch(e) {{}}
-
-        // Initial pass: convert existing escaped content to boldified HTML
-        // without altering text content; then keep normal flow.
-        render();
       </script>
     </div>
     """
     _html(code, height=height + 70)
+
 
 
 
