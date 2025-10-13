@@ -572,6 +572,9 @@ case_labs["_kind_lower"] = case_labs["kind"].astype(str).str.lower()
 scr = case_labs[case_labs["_kind_lower"] == "scr"].sort_values("timestamp").copy()
 uo  = case_labs[case_labs["_kind_lower"] != "scr"].sort_values("timestamp").copy()
 
+uo['hour'] = pd.to_numeric(uo['hour'], errors='coerce').astype('Int64')
+scr['hour'] = pd.to_numeric(scr['hour'], errors='coerce').astype('Int64')
+
 # ================== Layout ==================
 left, right = st.columns([3, 4], gap="large")
 
