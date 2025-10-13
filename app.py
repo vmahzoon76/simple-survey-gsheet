@@ -94,112 +94,141 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
       </div>
 
       <script>
-        const textEl = document.getElementById('text');
-        const addBtn = document.getElementById('addBtn');
-        const clearBtn = document.getElementById('clearBtn');
-        const qpKey = {json.dumps(qp_key)};
-        let ranges = []; // [{{start,end}} in text offsets]
-
-        function escapeHtml(s) {{
-          return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
-                  .replaceAll('>','&gt;').replaceAll('"','&quot;')
-                  .replaceAll("'",'&#039;');
-        }}
-
-        // Minimal markdown: **bold** -> <strong>bold</strong> (after escaping)
-        function renderFragment(s) {{
-          const esc = escapeHtml(s);
-          return esc.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
-        }}
-
-        function merge(rs) {{
-          if (!rs.length) return rs;
-          rs.sort((a,b)=>a.start-b.start);
-          const out=[rs[0]];
-          for (let i=1;i<rs.length;i++) {{
-            const last=out[out.length-1], cur=rs[i];
-            if (cur.start <= last.end) last.end=Math.max(last.end, cur.end);
-            else out.push(cur);
-          }}
-          return out;
-        }}
-
-        function selectionOffsets() {{
-          const sel = window.getSelection();
-          if (!sel || sel.rangeCount===0) return null;
-          const rng = sel.getRangeAt(0);
-          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
-          const pre = document.createRange();
-          pre.setStart(textEl, 0);
-          pre.setEnd(rng.startContainer, rng.startOffset);
-          const start = pre.toString().length;
-          const len = rng.toString().length;
-          return len>0 ? {{start, end:start+len}} : null;
-        }}
-
-        function render() {{
-          const txt = textEl.textContent;
-          if (!ranges.length) {{
-            textEl.innerHTML = renderFragment(txt);
-          }} else {{
-            const rs = ranges.slice().sort((a,b)=>a.start-b.start);
-            let html='', cur=0;
-            for (const r of rs) {{
-              html += renderFragment(txt.slice(cur, r.start));
-              html += '<mark>' + renderFragment(txt.slice(r.start, r.end)) + '</mark>';
-              cur = r.end;
-            }}
-            html += renderFragment(txt.slice(cur));
-            textEl.innerHTML = html;
-          }}
-          syncToUrl();
-        }}
-
-        function syncToUrl() {{
-          try {{
-            const html = textEl.innerHTML;
-            const u = new URL(window.parent.location.href);
-            u.searchParams.set(qpKey, encodeURIComponent(html));
-            window.parent.history.replaceState(null, '', u.toString());
-          }} catch(e) {{ /* ignore */ }}
-        }}
-
-        addBtn.onclick = () => {{
-          const off = selectionOffsets();
-          if (!off) return;
-          ranges.push(off);
-          ranges = merge(ranges);
-          render();
-        }};
-        clearBtn.onclick = () => {{
-          ranges = [];
-          render();
-        }};
-
-        // Ensure a final sync right before parent "Save Step 1/2" is clicked
-        const hookSave = () => {{
-          try {{
-            const btns = window.parent.document.querySelectorAll('button');
-            btns.forEach(b => {{
-              if (b.__hl_hooked__) return;
-              const t = (b.textContent||'');
-              if (t.includes('Save Step 1') || t.includes('Save Step 2')) {{
-                b.__hl_hooked__ = true;
-                b.addEventListener('click', () => syncToUrl(), {{capture:true}});
-              }}
-            }});
-          }} catch(e) {{}}
-        }};
-        try {{
-          const mo = new MutationObserver(hookSave);
-          mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
-          hookSave();
-        }} catch(e) {{}}
-
-        // Initial pass: convert existing escaped content to boldified HTML
-        // without altering text content; then keep normal flow.
+      const textEl = document.getElementById('text');
+      const addBtn = document.getElementById('addBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const qpKey = {{json.dumps(qp_key)}};
+      let ranges = []; // [{start,end}] highlight ranges over BASE_TEXT
+    
+      // Original text WITH markdown (**) preserved
+      const ORIG = {{json.dumps(text)}};  // note: raw python string -> JS string
+    
+      function escapeHtml(s) {
+        return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
+                .replaceAll('>','&gt;').replaceAll('"','&quot;')
+                .replaceAll("'",'&#039;');
+      }
+    
+      // Parse **bold** once to (BASE_TEXT, BOLD_RANGES) in visual coordinates
+      function parseBold(orig) {
+        let boldRanges = [];
+        let base = '';
+        let i = 0;
+    
+        while (i < orig.length) {
+          const j = orig.indexOf('**', i);
+          if (j === -1) { base += orig.slice(i); break; }
+          base += orig.slice(i, j);
+    
+          const k = orig.indexOf('**', j + 2);
+          if (k === -1) { base += orig.slice(j); break; }
+    
+          const content = orig.slice(j + 2, k);
+          const start = base.length;
+          const end = start + content.length;
+          boldRanges.push({ start, end });
+          base += content;
+          i = k + 2;
+        }
+        return { base, boldRanges };
+      }
+    
+      const { base: BASE_TEXT, boldRanges: BOLD } = parseBold(ORIG);
+    
+      // Compute selection offsets relative to BASE_TEXT
+      function selectionOffsets() {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return null;
+        const rng = sel.getRangeAt(0);
+        if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
+        const pre = document.createRange();
+        pre.setStart(textEl, 0);
+        pre.setEnd(rng.startContainer, rng.startOffset);
+        const start = pre.toString().length;
+        const len = rng.toString().length;
+        return len > 0 ? { start, end: start + len } : null;
+      }
+    
+      // Merge overlapping ranges helper
+      function merge(rs) {
+        if (!rs.length) return rs;
+        rs = rs.slice().sort((a,b)=>a.start-b.start);
+        const out = [rs[0]];
+        for (let i=1;i<rs.length;i++) {
+          const last = out[out.length-1], cur = rs[i];
+          if (cur.start <= last.end) last.end = Math.max(last.end, cur.end);
+          else out.push(cur);
+        }
+        return out;
+      }
+    
+      // Render BASE_TEXT with layered <strong> (BOLD) and <mark> (ranges)
+      function render() {
+        // breakpoints where formatting can change
+        const breaks = new Set([0, BASE_TEXT.length]);
+        for (const r of BOLD) { breaks.add(r.start); breaks.add(r.end); }
+        for (const r of ranges) { breaks.add(r.start); breaks.add(r.end); }
+        const pts = [...breaks].sort((a,b)=>a-b);
+    
+        let html = '';
+        for (let i=0;i<pts.length-1;i++) {
+          const a = pts[i], b = pts[i+1];
+          let frag = escapeHtml(BASE_TEXT.slice(a,b));
+    
+          const inBold = BOLD.some(r => a < r.end && b > r.start);
+          const inHl   = ranges.some(r => a < r.end && b > r.start);
+    
+          if (inBold) frag = '<strong>' + frag + '</strong>';
+          if (inHl)   frag = '<mark>'   + frag + '</mark>';
+          html += frag;
+        }
+    
+        textEl.innerHTML = html;
+        syncToUrl();
+      }
+    
+      function syncToUrl() {
+        try {
+          const u = new URL(window.parent.location.href);
+          u.searchParams.set(qpKey, encodeURIComponent(textEl.innerHTML));
+          window.parent.history.replaceState(null, '', u.toString());
+        } catch(e) {}
+      }
+    
+      // Hook selection buttons
+      addBtn.onclick = () => {
+        const off = selectionOffsets();
+        if (!off) return;
+        ranges.push(off);
+        ranges = merge(ranges);
         render();
-      </script>
+      };
+      clearBtn.onclick = () => { ranges = []; render(); };
+    
+      // Ensure a final sync right before parent "Save Step 1/2" is clicked
+      const hookSave = () => {
+        try {
+          const btns = window.parent.document.querySelectorAll('button');
+          btns.forEach(b => {
+            if (b.__hl_hooked__) return;
+            const t = (b.textContent||'');
+            if (t.includes('Save Step 1') || t.includes('Save Step 2')) {
+              b.__hl_hooked__ = true;
+              b.addEventListener('click', () => syncToUrl(), {capture:true});
+            }
+          });
+        } catch(e) {}
+      };
+      try {
+        const mo = new MutationObserver(hookSave);
+        mo.observe(window.parent.document.body, {childList:true, subtree:true});
+        hookSave();
+      } catch(e) {}
+    
+      // Initial paint: show base text with bold (no highlights)
+      textEl.innerHTML = escapeHtml(BASE_TEXT); // in case CSS flashes before render
+      render();
+    </script>
     </div>
     """
     _html(code, height=height + 70)
