@@ -27,6 +27,12 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
 # -------------------- Helpers --------------------
 
+def _hours_to_int(col: pd.Series) -> pd.Series:
+    # Round to nearest hour and keep NA friendly
+    s = pd.to_numeric(col, errors="coerce")
+    return s.round().astype("Int64")  # Pandas nullable int so NaN stays blank
+
+
 from streamlit.components.v1 import html as _html
 import html as _py_html
 
@@ -617,7 +623,9 @@ with right:
             st.altair_chart(ch_scr, use_container_width=True)
             st.caption("Table — SCr:")
             scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
+            scr_table["hours"] = _hours_to_int(scr_table["hours"])
             st.dataframe(scr_table, use_container_width=True)
+
         else:
             st.warning("No SCr values for this case.")
 
@@ -643,7 +651,9 @@ with right:
 
             st.caption("Table — UO (original item names retained in `kind`):")
             uo_table = uox[["hours", "timestamp", "kind", "uo_value", "unit"]].rename(columns={"uo_value": "value"})
+            uo_table["hours"] = _hours_to_int(uo_table["hours"])
             st.dataframe(uo_table, use_container_width=True)
+
         else:
             st.warning("No UO values for this case.")
 
