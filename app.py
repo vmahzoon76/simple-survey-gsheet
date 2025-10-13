@@ -71,12 +71,13 @@ import json
 
 def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560):
     """
-    Dual-box highlighter:
-      • Top box = immutable reading view (keeps **bold** as <strong>, never overwritten)
-      • Bottom box = live "Highlights preview" with <mark> tags applied to the same text
-    Selection is made on the top box; preview shows the result. URL param stores preview HTML.
+    One-box highlighter rendered as the *actual* discharge summary text.
+    Highlights show inline and auto-sync to a step-specific query param:
+      ?hl_{step_key}_{case_id}=<urlencoded html>.
+    Supports **bold** markdown (only) rendered to <strong>…</strong>.
     """
-    qp_key = f"hl_{step_key}_{case_id}"
+    safe_text = _py_html.escape(text)
+    qp_key = f"hl_{step_key}_{case_id}"   # step-specific key (e.g., hl_step1_<id> or hl_step2_<id>)
 
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
@@ -85,28 +86,19 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
         <button id="clearBtn" type="button">Clear</button>
       </div>
 
-      <!-- Read-only pane (never re-rendered after init) -->
-      <div style="font-weight:600; margin-bottom:4px;">Reading view</div>
-      <div id="text" 
+      <!-- The actual discharge summary text (one box only) -->
+      <div id="text"
            style="border:1px solid #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
-                  max-height:{height}px; width:100%; box-sizing:border-box;"></div>
-
-      <!-- Preview pane (shows <mark> without touching the reading view) -->
-      <div style="font-weight:600; margin:12px 0 4px;">Highlights preview</div>
-      <div id="preview"
-           style="border:1px dashed #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
-                  max-height:{height}px; width:100%; box-sizing:border-box;"></div>
+                  max-height:{height}px; width:100%; box-sizing:border-box;">
+        {safe_text}
+      </div>
 
       <script>
-        // Original raw text from Python (JSON-escaped for JS)
-        const origText = {json.dumps(text)};
-        const qpKey = {json.dumps(qp_key)};
         const textEl = document.getElementById('text');
-        const previewEl = document.getElementById('preview');
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
-
-        let ranges = []; // array of {{start,end}} in plain-text offsets taken from the reading pane
+        const qpKey = {json.dumps(qp_key)};
+        let ranges = []; // [{{start,end}} in text offsets]
 
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
@@ -114,8 +106,8 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
                   .replaceAll("'",'&#039;');
         }}
 
-        // Minimal markdown: **bold** -> <strong>…</strong>
-        function boldify(s) {{
+        // Minimal markdown: **bold** -> <strong>bold</strong> (after escaping)
+        function renderFragment(s) {{
           const esc = escapeHtml(s);
           return esc.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
         }}
@@ -132,63 +124,56 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           return out;
         }}
 
-        // Compute start/end offsets for current selection relative to plain text in reading pane
         function selectionOffsets() {{
           const sel = window.getSelection();
           if (!sel || sel.rangeCount===0) return null;
           const rng = sel.getRangeAt(0);
           if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
-
           const pre = document.createRange();
-          pre.selectNodeContents(textEl);
+          pre.setStart(textEl, 0);
           pre.setEnd(rng.startContainer, rng.startOffset);
           const start = pre.toString().length;
           const len = rng.toString().length;
           return len>0 ? {{start, end:start+len}} : null;
         }}
 
-        // Rebuild preview HTML using the immutable original text + merged ranges
-        function renderPreview() {{
+        function render() {{
+          const txt = textEl.textContent;
           if (!ranges.length) {{
-            previewEl.innerHTML = boldify(origText);
+            textEl.innerHTML = renderFragment(txt);
           }} else {{
             const rs = ranges.slice().sort((a,b)=>a.start-b.start);
             let html='', cur=0;
             for (const r of rs) {{
-              html += boldify(origText.slice(cur, r.start));
-              html += '<mark>' + boldify(origText.slice(r.start, r.end)) + '</mark>';
+              html += renderFragment(txt.slice(cur, r.start));
+              html += '<mark>' + renderFragment(txt.slice(r.start, r.end)) + '</mark>';
               cur = r.end;
             }}
-            html += boldify(origText.slice(cur));
-            previewEl.innerHTML = html;
+            html += renderFragment(txt.slice(cur));
+            textEl.innerHTML = html;
           }}
           syncToUrl();
         }}
 
         function syncToUrl() {{
           try {{
-            const html = previewEl.innerHTML;
+            const html = textEl.innerHTML;
             const u = new URL(window.parent.location.href);
             u.searchParams.set(qpKey, encodeURIComponent(html));
             window.parent.history.replaceState(null, '', u.toString());
           }} catch(e) {{ /* ignore */ }}
         }}
 
-        // Initialize: set the reading pane once (bold only), and preview (no highlights yet)
-        textEl.innerHTML = boldify(origText);
-        renderPreview();
-
-        // Wire buttons
         addBtn.onclick = () => {{
           const off = selectionOffsets();
           if (!off) return;
           ranges.push(off);
           ranges = merge(ranges);
-          renderPreview(); // ONLY updates preview, never the reading pane
+          render();
         }};
         clearBtn.onclick = () => {{
           ranges = [];
-          renderPreview();
+          render();
         }};
 
         // Ensure a final sync right before parent "Save Step 1/2" is clicked
@@ -210,10 +195,14 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
           hookSave();
         }} catch(e) {{}}
+
+        // Initial pass: convert existing escaped content to boldified HTML
+        // without altering text content; then keep normal flow.
+        render();
       </script>
     </div>
     """
-    _html(code, height=height*2 + 120)
+    _html(code, height=height + 70)
 
 
 
