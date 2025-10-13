@@ -7,6 +7,7 @@ import json
 import time
 from datetime import datetime
 
+
 import pandas as pd
 import streamlit as st
 from streamlit.components.v1 import html as _html
@@ -26,6 +27,16 @@ st.title("AKI Expert Review")
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
 # -------------------- Helpers --------------------
+import re
+
+def _strip_strong_only(html: str) -> str:
+    """Remove <strong> (and <b>) tags but keep everything else, esp. <mark>."""
+    if not isinstance(html, str):
+        return ""
+    # remove closing first, then opening; allow spaces/attrs just in case
+    html = re.sub(r'<\s*/\s*(?:strong|b)\s*>', '', html, flags=re.IGNORECASE)
+    html = re.sub(r'<\s*(?:strong|b)(?:\s+[^>]*)?>', '', html, flags=re.IGNORECASE)
+    return html
 
 def _hours_to_int(col: pd.Series) -> pd.Series:
     # Round to nearest hour and keep NA friendly
@@ -684,6 +695,7 @@ if st.session_state.step == 1:
             qp_key = f"hl_step1_{case_id}"
             qp = st.query_params
             hl_html = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
+            hl_html = _strip_strong_only(hl_html) 
 
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
@@ -779,6 +791,7 @@ else:
             qp_key2 = f"hl_step2_{case_id}"
             qp = st.query_params
             hl_html2 = urllib.parse.unquote(qp.get(qp_key2, "")) if qp_key2 in qp else ""
+            hl_html2 = _strip_strong_only(hl_html2) 
 
             row = {
                 "timestamp_utc": datetime.utcnow().isoformat(),
