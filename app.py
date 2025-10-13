@@ -614,7 +614,7 @@ with right:
             st.markdown("**Serum Creatinine**")
             st.altair_chart(ch_scr, use_container_width=True)
             st.caption("Table — SCr:")
-            scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
+            scr_table = src[["hours since admission", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
             st.dataframe(scr_table, use_container_width=True)
         else:
             st.warning("No SCr values for this case.")
