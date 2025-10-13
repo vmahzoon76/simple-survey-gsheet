@@ -71,13 +71,10 @@ import json
 
 def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560):
     """
-    One-box highlighter rendered as the *actual* discharge summary text.
-    Highlights show inline and auto-sync to a step-specific query param:
-      ?hl_{step_key}_{case_id}=<urlencoded html>.
-    Supports **bold** markdown (only) rendered to <strong>…</strong>.
+    One-box highlighter that preserves **bold** (→ <strong>) and adds <mark> on top.
+    We never read from textEl.textContent; we always render from an immutable origText.
     """
-    safe_text = _py_html.escape(text)
-    qp_key = f"hl_{step_key}_{case_id}"   # step-specific key (e.g., hl_step1_<id> or hl_step2_<id>)
+    qp_key = f"hl_{step_key}_{case_id}"
 
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
@@ -86,19 +83,18 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
         <button id="clearBtn" type="button">Clear</button>
       </div>
 
-      <!-- The actual discharge summary text (one box only) -->
       <div id="text"
            style="border:1px solid #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
-                  max-height:{height}px; width:100%; box-sizing:border-box;">
-        {safe_text}
-      </div>
+                  max-height:{height}px; width:100%; box-sizing:border-box;"></div>
 
       <script>
+        const origWithMarkers = {json.dumps(text)};  // includes **...** markers
+        const qpKey = {json.dumps(qp_key)};
         const textEl = document.getElementById('text');
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
-        const qpKey = {json.dumps(qp_key)};
-        let ranges = []; // [{{start,end}} in text offsets]
+
+        let ranges = [];  // highlight ranges in *rendered plain text* offsets
 
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
@@ -106,11 +102,45 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
                   .replaceAll("'",'&#039;');
         }}
 
-        // Minimal markdown: **bold** -> <strong>bold</strong> (after escaping)
-        function renderFragment(s) {{
-          const esc = escapeHtml(s);
-          return esc.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+        // Parse **bold** into tokens on first load and also produce plainText (no **)
+        // Each token: {{ start, end, bold, text }} where start/end are in plainText coords
+        function parseBold(orig) {{
+          const tokens = [];
+          let i = 0, plainPos = 0;
+          while (i < orig.length) {{
+            const startBold = orig.indexOf('**', i);
+            if (startBold === -1) {{
+              const t = orig.slice(i);
+              if (t) tokens.push({{start: plainPos, end: plainPos + t.length, bold: false, text: t}});
+              plainPos += t.length;
+              break;
+            }}
+            // plain before bold
+            const plain = orig.slice(i, startBold);
+            if (plain) {{
+              tokens.push({{start: plainPos, end: plainPos + plain.length, bold: false, text: plain}});
+              plainPos += plain.length;
+            }}
+            const endBoldMarker = orig.indexOf('**', startBold + 2);
+            if (endBoldMarker === -1) {{
+              // unmatched ** -> treat rest as plain
+              const rest = orig.slice(startBold);
+              tokens.push({{start: plainPos, end: plainPos + rest.length, bold: false, text: rest}});
+              plainPos += rest.length;
+              break;
+            }}
+            const boldContent = orig.slice(startBold + 2, endBoldMarker);
+            tokens.push({{start: plainPos, end: plainPos + boldContent.length, bold: true, text: boldContent}});
+            plainPos += boldContent.length;
+            i = endBoldMarker + 2;
+          }}
+          const plainText = tokens.map(t => t.text).join('');
+          return {{ tokens, plainText }};
         }}
+
+        const BOLD = parseBold(origWithMarkers);
+        const TOKENS = BOLD.tokens;          // immutable token stream
+        const PLAIN = BOLD.plainText;        // immutable plain text (no **)
 
         function merge(rs) {{
           if (!rs.length) return rs;
@@ -118,40 +148,43 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           const out=[rs[0]];
           for (let i=1;i<rs.length;i++) {{
             const last=out[out.length-1], cur=rs[i];
-            if (cur.start <= last.end) last.end=Math.max(last.end, cur.end);
+            if (cur.start <= last.end) last.end = Math.max(last.end, cur.end);
             else out.push(cur);
           }}
           return out;
         }}
 
-        function selectionOffsets() {{
-          const sel = window.getSelection();
-          if (!sel || sel.rangeCount===0) return null;
-          const rng = sel.getRangeAt(0);
-          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
-          const pre = document.createRange();
-          pre.setStart(textEl, 0);
-          pre.setEnd(rng.startContainer, rng.startOffset);
-          const start = pre.toString().length;
-          const len = rng.toString().length;
-          return len>0 ? {{start, end:start+len}} : null;
+        function clampRanges(rs, n) {{
+          return rs.map(r => ({{start: Math.max(0, Math.min(n, r.start)), end: Math.max(0, Math.min(n, r.end))}}))
+                   .filter(r => r.end > r.start);
         }}
 
+        // Render from TOKENS + ranges into innerHTML (properly nests <strong> and <mark>)
         function render() {{
-          const txt = textEl.textContent;
-          if (!ranges.length) {{
-            textEl.innerHTML = renderFragment(txt);
-          }} else {{
-            const rs = ranges.slice().sort((a,b)=>a.start-b.start);
-            let html='', cur=0;
-            for (const r of rs) {{
-              html += renderFragment(txt.slice(cur, r.start));
-              html += '<mark>' + renderFragment(txt.slice(r.start, r.end)) + '</mark>';
-              cur = r.end;
+          const rs = merge(clampRanges(ranges.slice(), PLAIN.length));
+          let html = '';
+          let rIdx = 0;
+
+          for (const tok of TOKENS) {{
+            let segStart = tok.start;
+            while (segStart < tok.end) {{
+              // active highlight range at this position?
+              while (rIdx < rs.length && rs[rIdx].end <= segStart) rIdx++;
+              const r = (rIdx < rs.length && rs[rIdx].start < tok.end && rs[rIdx].end > segStart) ? rs[rIdx] : null;
+              const pieceEnd = r ? Math.min(tok.end, r.end) : Math.min(tok.end, (rIdx < rs.length ? rs[rIdx].start : tok.end));
+              const raw = tok.text.slice(segStart - tok.start, pieceEnd - tok.start);
+              const esc = escapeHtml(raw);
+
+              if (tok.bold && r) html += '<strong><mark>' + esc + '</mark></strong>';
+              else if (tok.bold) html += '<strong>' + esc + '</strong>';
+              else if (r) html += '<mark>' + esc + '</mark>';
+              else html += esc;
+
+              segStart = pieceEnd;
             }}
-            html += renderFragment(txt.slice(cur));
-            textEl.innerHTML = html;
           }}
+
+          textEl.innerHTML = html;
           syncToUrl();
         }}
 
@@ -161,9 +194,25 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
             const u = new URL(window.parent.location.href);
             u.searchParams.set(qpKey, encodeURIComponent(html));
             window.parent.history.replaceState(null, '', u.toString());
-          }} catch(e) {{ /* ignore */ }}
+          }} catch(e) {{}}
         }}
 
+        // Selection offsets in rendered plain text coords (tags ignored)
+        function selectionOffsets() {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return null;
+          const rng = sel.getRangeAt(0);
+          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
+
+          const pre = document.createRange();
+          pre.selectNodeContents(textEl);
+          pre.setEnd(rng.startContainer, rng.startOffset);
+          const start = pre.toString().length;
+          const len = rng.toString().length;
+          return len > 0 ? {{start, end: start + len}} : null;
+        }}
+
+        // Wire up
         addBtn.onclick = () => {{
           const off = selectionOffsets();
           if (!off) return;
@@ -171,10 +220,14 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           ranges = merge(ranges);
           render();
         }};
+
         clearBtn.onclick = () => {{
           ranges = [];
           render();
         }};
+
+        // Initial paint (no highlights)
+        render();
 
         // Ensure a final sync right before parent "Save Step 1/2" is clicked
         const hookSave = () => {{
@@ -195,14 +248,11 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
           hookSave();
         }} catch(e) {{}}
-
-        // Initial pass: convert existing escaped content to boldified HTML
-        // without altering text content; then keep normal flow.
-        render();
       </script>
     </div>
     """
     _html(code, height=height + 70)
+
 
 
 
