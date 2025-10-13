@@ -764,6 +764,7 @@ else:
         q_onset_exp = ""
         
         if q_aki2 == "Yes":
+            st.markdown("**If you believe this patient has AKI, please answer the following questions:**")
             q_etiology = st.text_area(
                 "AKI etiology —  What was the reason behind AKI? choose ONE (Pre-renal / Intrinsic / Post-renal / Multi-factorial) and explain how you concluded it:",
                 key="q2_etiology",
