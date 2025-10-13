@@ -131,36 +131,23 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           return len>0 ? {{start, end:start+len}} : null;
         }}
 
-        function render() {
-          const txt = textEl.textContent; // plain visible text
-          const START = '[[[HL_START]]]';
-          const END   = '[[[HL_END]]]';
-        
-          // Insert placeholders into the plain text at selected character offsets
-          const rs = ranges.slice().sort((a,b)=>a.start-b.start);
-          let cur = 0, withMarkers = '';
-          for (const r of rs) {
-            withMarkers += txt.slice(cur, r.start) + START + txt.slice(r.start, r.end) + END;
-            cur = r.end;
-          }
-          withMarkers += txt.slice(cur);
-        
-          // Now escape+convert markdown ONCE (keeps **bold** spanning any highlights)
-          // (same escapeHtml as you already have)
-          let htmlAll = escapeHtml(withMarkers)
-            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        
-          // Finally replace placeholders with real <mark> tags
-          htmlAll = htmlAll
-            .replaceAll(START, '<mark>')
-            .replaceAll(END, '</mark>');
-        
-          textEl.innerHTML = htmlAll;
+        function render() {{
+          const txt = textEl.textContent;
+          if (!ranges.length) {{
+            textEl.innerHTML = renderFragment(txt);
+          }} else {{
+            const rs = ranges.slice().sort((a,b)=>a.start-b.start);
+            let html='', cur=0;
+            for (const r of rs) {{
+              html += renderFragment(txt.slice(cur, r.start));
+              html += '<mark>' + renderFragment(txt.slice(r.start, r.end)) + '</mark>';
+              cur = r.end;
+            }}
+            html += renderFragment(txt.slice(cur));
+            textEl.innerHTML = html;
+          }}
           syncToUrl();
-        }
-
-        
-
+        }}
 
         function syncToUrl() {{
           try {{
