@@ -753,7 +753,7 @@ else:
 
         # Think-aloud reasoning (keep)
         q_reasoning = st.text_area(
-            "Can you talk aloud about your reasoning process? Please mention everything you thought about.",
+            "Please explain the reason for your decision.",
             height=180, key="q2_reasoning"
         )
 
