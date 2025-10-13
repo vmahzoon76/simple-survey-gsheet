@@ -1,3 +1,7 @@
+
+
+
+
 import os
 import json
 import time
@@ -65,12 +69,9 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
     Highlights show inline and auto-sync to a step-specific query param:
       ?hl_{step_key}_{case_id}=<urlencoded html>.
     Supports **bold** markdown (only) rendered to <strong>…</strong>.
-    Preserves previously-saved <mark> highlights and reconstructs bold from
-    the original raw text on each render so bold never disappears.
     """
-    # content shown if JS disabled; JS will override from rawText at runtime
-    noscript_text = _py_html.escape(text)
-    qp_key = f"hl_{step_key}_{case_id}"
+    safe_text = _py_html.escape(text)
+    qp_key = f"hl_{step_key}_{case_id}"   # step-specific key (e.g., hl_step1_<id> or hl_step2_<id>)
 
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
@@ -83,20 +84,16 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
       <div id="text"
            style="border:1px solid #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
                   max-height:{height}px; width:100%; box-sizing:border-box;">
-        {noscript_text}
+        {safe_text}
       </div>
 
       <script>
-        // --- canonical original text injected from Python (keeps ** markers intact) ---
-        const rawText = {json.dumps(text)};
-
         const textEl = document.getElementById('text');
         const addBtn = document.getElementById('addBtn');
         const clearBtn = document.getElementById('clearBtn');
         const qpKey = {json.dumps(qp_key)};
-        let ranges = []; // array of {start, end} offsets relative to rawText
+        let ranges = []; // [{{start,end}} in text offsets]
 
-        // escape HTML for safe insertion of plain text
         function escapeHtml(s) {{
           return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
                   .replaceAll('>','&gt;').replaceAll('"','&quot;')
@@ -106,92 +103,45 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
         // Minimal markdown: **bold** -> <strong>bold</strong> (after escaping)
         function renderFragment(s) {{
           const esc = escapeHtml(s);
-          // convert **...** to <strong>...</strong>
           return esc.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
         }}
 
-        // Merge overlapping/adjacent ranges
         function merge(rs) {{
           if (!rs.length) return rs;
           rs.sort((a,b)=>a.start-b.start);
-          const out=[{{start: rs[0].start, end: rs[0].end}}];
+          const out=[rs[0]];
           for (let i=1;i<rs.length;i++) {{
             const last=out[out.length-1], cur=rs[i];
             if (cur.start <= last.end) last.end=Math.max(last.end, cur.end);
-            else out.push({{start: cur.start, end: cur.end}});
+            else out.push(cur);
           }}
           return out;
         }}
 
-        // Compute selection offsets relative to the canonical rawText.
-        // Works because textEl is rendered from rawText (so visible text matches rawText).
         function selectionOffsets() {{
           const sel = window.getSelection();
           if (!sel || sel.rangeCount===0) return null;
           const rng = sel.getRangeAt(0);
-
-          // Ensure selection is fully inside our text box
           if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
-
-          // Create a range from start of element to selection start to compute start offset
           const pre = document.createRange();
           pre.setStart(textEl, 0);
           pre.setEnd(rng.startContainer, rng.startOffset);
           const start = pre.toString().length;
           const len = rng.toString().length;
-          return len > 0 ? {{start, end: start + len}} : null;
+          return len>0 ? {{start, end:start+len}} : null;
         }}
 
-        // Convert saved HTML (with <mark>) into ranges relative to rawText
-        function parseRangesFromSavedHTML(savedHTML) {{
-          try {{
-            const temp = document.createElement('div');
-            temp.innerHTML = savedHTML;
-            const out = [];
-            let idx = 0;
-
-            function walk(node) {{
-              if (node.nodeType === Node.TEXT_NODE) {{
-                idx += node.nodeValue.length;
-              }} else if (node.nodeType === Node.ELEMENT_NODE) {{
-                const tag = node.tagName ? node.tagName.toLowerCase() : '';
-                if (tag === 'mark') {{
-                  // start position before consuming mark children
-                  const start = idx;
-                  // process children (will advance idx)
-                  for (let i=0;i<node.childNodes.length;i++) walk(node.childNodes[i]);
-                  const end = idx;
-                  out.push({{start, end}});
-                }} else {{
-                  // process children normally (strong, br, etc.)
-                  for (let i=0;i<node.childNodes.length;i++) walk(node.childNodes[i]);
-                }}
-              }}
-            }}
-
-            walk(temp);
-            return out;
-          }} catch (e) {{
-            return [];
-          }}
-        }}
-
-        // Render function: ALWAYS uses rawText as source so markdown conversion is consistent
         function render() {{
-          const txt = rawText;
-
+          const txt = textEl.textContent;
           if (!ranges.length) {{
             textEl.innerHTML = renderFragment(txt);
           }} else {{
             const rs = ranges.slice().sort((a,b)=>a.start-b.start);
-            let html = '', cur = 0;
+            let html='', cur=0;
             for (const r of rs) {{
-              // safety: clamp indices
-              const s = Math.max(0, Math.min(txt.length, r.start));
-              const e = Math.max(0, Math.min(txt.length, r.end));
-              html += renderFragment(txt.slice(cur, s));
-              html += '<mark>' + renderFragment(txt.slice(s, e)) + '</mark>';
-              cur = e;
+              html += renderFragment(txt.slice(cur, r.start));
+              html += '<mark>' + renderFragment(txt.slice(r.start, r.end)) + '</mark>';
+              cur = r.end;
             }}
             html += renderFragment(txt.slice(cur));
             textEl.innerHTML = html;
@@ -199,18 +149,28 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           syncToUrl();
         }}
 
-        // Save current innerHTML to parent's URL query param (encoded)
         function syncToUrl() {{
           try {{
             const html = textEl.innerHTML;
             const u = new URL(window.parent.location.href);
-            // store encoded HTML so it survives characters
             u.searchParams.set(qpKey, encodeURIComponent(html));
             window.parent.history.replaceState(null, '', u.toString());
           }} catch(e) {{ /* ignore */ }}
         }}
 
-        // Hook save buttons in parent so we sync right before save clicks
+        addBtn.onclick = () => {{
+          const off = selectionOffsets();
+          if (!off) return;
+          ranges.push(off);
+          ranges = merge(ranges);
+          render();
+        }};
+        clearBtn.onclick = () => {{
+          ranges = [];
+          render();
+        }};
+
+        // Ensure a final sync right before parent "Save Step 1/2" is clicked
         const hookSave = () => {{
           try {{
             const btns = window.parent.document.querySelectorAll('button');
@@ -224,57 +184,19 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
             }});
           }} catch(e) {{}}
         }};
-
         try {{
           const mo = new MutationObserver(hookSave);
           mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
           hookSave();
         }} catch(e) {{}}
 
-        // Wire up add/clear
-        addBtn.onclick = () => {{
-          const off = selectionOffsets();
-          if (!off) return;
-          ranges.push(off);
-          ranges = merge(ranges);
-          render();
-        }};
-        clearBtn.onclick = () => {{
-          ranges = [];
-          render();
-        }};
-
-        // Initialization: if URL already contains saved HTML, try to restore ranges from it.
-        (function init() {{
-          try {{
-            const u = new URL(window.parent.location.href);
-            const saved = u.searchParams.get(qpKey);
-            if (saved) {{
-              let decoded = saved;
-              try {{ decoded = decodeURIComponent(saved); }} catch (e) {{ /* keep raw */ }}
-              // parse <mark> positions into ranges relative to rawText
-              const parsed = parseRangesFromSavedHTML(decoded);
-              if (parsed && parsed.length) {{
-                ranges = merge(parsed);
-                render();
-                return;
-              }} else {{
-                // fallback: set innerHTML to saved value (useful if parsing fails)
-                textEl.innerHTML = decoded;
-                // ensure we still have canonical ability to re-render (sync will overwrite on next action)
-                return;
-              }}
-            }}
-          }} catch (e) {{ /* ignore */ }}
-
-          // default: no saved highlights — render from canonical raw text
-          render();
-        }})();
+        // Initial pass: convert existing escaped content to boldified HTML
+        // without altering text content; then keep normal flow.
+        render();
       </script>
     </div>
     """
     _html(code, height=height + 70)
-
 
 
 
@@ -903,6 +825,8 @@ with c3:
         _scroll_top()
         time.sleep(0.18)
         _rerun()
+
+
 
 
 
