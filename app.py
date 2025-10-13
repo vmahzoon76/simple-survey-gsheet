@@ -159,6 +159,8 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           syncToUrl();
         }
 
+        
+
 
         function syncToUrl() {{
           try {{
