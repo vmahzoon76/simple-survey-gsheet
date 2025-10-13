@@ -472,7 +472,7 @@ labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
 admissions["admittime"] = pd.to_datetime(admissions["admittime"], errors="coerce")
-labs["charttime"] = pd.to_datetime(admissions["chartitme"], errors="coerce")
+labs["charttime"] = pd.to_datetime(admissions["charttime"], errors="coerce")
 
 
 
