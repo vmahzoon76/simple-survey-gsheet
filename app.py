@@ -471,6 +471,8 @@ admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
+admissions["admittime"] = pd.to_datetime(admissions["admittime"], errors="coerce")
+
 
 
 if admissions.empty:
