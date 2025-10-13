@@ -611,7 +611,6 @@ with right:
             st.altair_chart(ch_scr, use_container_width=True)
             st.caption("Table — SCr:")
             scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
-            scr_table["hours"] = scr_table["hours"].astype('Int64')
             st.dataframe(scr_table, use_container_width=True)
         else:
             st.warning("No SCr values for this case.")
@@ -638,7 +637,6 @@ with right:
 
             st.caption("Table — UO (original item names retained in `kind`):")
             uo_table = uox[["hours", "timestamp", "kind", "uo_value", "unit"]].rename(columns={"uo_value": "value"})
-            uo_table["hours"] = uo_table["hours"].astype('Int64')
             st.dataframe(uo_table, use_container_width=True)
         else:
             st.warning("No UO values for this case.")
