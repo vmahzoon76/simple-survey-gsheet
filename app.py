@@ -71,13 +71,18 @@ import json
 
 def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560):
     """
-    One-box highlighter rendered as the *actual* discharge summary text.
-    Highlights show inline and auto-sync to a step-specific query param:
-      ?hl_{step_key}_{case_id}=<urlencoded html>.
-    Supports **bold** markdown (only) rendered to <strong>…</strong>.
+    Inline highlighter that preserves **bold** while allowing mark highlights.
+
+    - Parses the original `text` once to produce:
+        BASE_TEXT (no ** markers) and BOLD_RANGES (index pairs over BASE_TEXT).
+    - Renders BASE_TEXT every time, layering:
+        <strong> for bold and <mark> for highlights.
+    - Syncs the current HTML to a step-specific query param:
+        ?hl_{step_key}_{case_id}=<encoded html>
+      (We let the browser encode; the Streamlit side can urllib.parse.unquote once.)
     """
-    safe_text = _py_html.escape(text)
-    qp_key = f"hl_{step_key}_{case_id}"   # step-specific key (e.g., hl_step1_<id> or hl_step2_<id>)
+    import json as _json
+    qp_key = f"hl_{step_key}_{case_id}"
 
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
@@ -86,152 +91,159 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
         <button id="clearBtn" type="button">Clear</button>
       </div>
 
-      <!-- The actual discharge summary text (one box only) -->
+      <!-- Render target -->
       <div id="text"
            style="border:1px solid #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
-                  max-height:{height}px; width:100%; box-sizing:border-box;">
-        {safe_text}
-      </div>
+                  max-height:{height}px; width:100%; box-sizing:border-box;"></div>
 
       <script>
-      const textEl = document.getElementById('text');
-      const addBtn = document.getElementById('addBtn');
-      const clearBtn = document.getElementById('clearBtn');
-      const qpKey = {{json.dumps(qp_key)}};
-      let ranges = []; // [{start,end}] highlight ranges over BASE_TEXT
-    
-      // Original text WITH markdown (**) preserved
-      const ORIG = {{json.dumps(text)}};  // note: raw python string -> JS string
-    
-      function escapeHtml(s) {
-        return s.replaceAll('&','&amp;').replaceAll('<','&lt;')
-                .replaceAll('>','&gt;').replaceAll('"','&quot;')
-                .replaceAll("'",'&#039;');
-      }
-    
-      // Parse **bold** once to (BASE_TEXT, BOLD_RANGES) in visual coordinates
-      function parseBold(orig) {
-        let boldRanges = [];
-        let base = '';
-        let i = 0;
-    
-        while (i < orig.length) {
-          const j = orig.indexOf('**', i);
-          if (j === -1) { base += orig.slice(i); break; }
-          base += orig.slice(i, j);
-    
-          const k = orig.indexOf('**', j + 2);
-          if (k === -1) { base += orig.slice(j); break; }
-    
-          const content = orig.slice(j + 2, k);
-          const start = base.length;
-          const end = start + content.length;
-          boldRanges.push({ start, end });
-          base += content;
-          i = k + 2;
-        }
-        return { base, boldRanges };
-      }
-    
-      const { base: BASE_TEXT, boldRanges: BOLD } = parseBold(ORIG);
-    
-      // Compute selection offsets relative to BASE_TEXT
-      function selectionOffsets() {
-        const sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0) return null;
-        const rng = sel.getRangeAt(0);
-        if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
-        const pre = document.createRange();
-        pre.setStart(textEl, 0);
-        pre.setEnd(rng.startContainer, rng.startOffset);
-        const start = pre.toString().length;
-        const len = rng.toString().length;
-        return len > 0 ? { start, end: start + len } : null;
-      }
-    
-      // Merge overlapping ranges helper
-      function merge(rs) {
-        if (!rs.length) return rs;
-        rs = rs.slice().sort((a,b)=>a.start-b.start);
-        const out = [rs[0]];
-        for (let i=1;i<rs.length;i++) {
-          const last = out[out.length-1], cur = rs[i];
-          if (cur.start <= last.end) last.end = Math.max(last.end, cur.end);
-          else out.push(cur);
-        }
-        return out;
-      }
-    
-      // Render BASE_TEXT with layered <strong> (BOLD) and <mark> (ranges)
-      function render() {
-        // breakpoints where formatting can change
-        const breaks = new Set([0, BASE_TEXT.length]);
-        for (const r of BOLD) { breaks.add(r.start); breaks.add(r.end); }
-        for (const r of ranges) { breaks.add(r.start); breaks.add(r.end); }
-        const pts = [...breaks].sort((a,b)=>a-b);
-    
-        let html = '';
-        for (let i=0;i<pts.length-1;i++) {
-          const a = pts[i], b = pts[i+1];
-          let frag = escapeHtml(BASE_TEXT.slice(a,b));
-    
-          const inBold = BOLD.some(r => a < r.end && b > r.start);
-          const inHl   = ranges.some(r => a < r.end && b > r.start);
-    
-          if (inBold) frag = '<strong>' + frag + '</strong>';
-          if (inHl)   frag = '<mark>'   + frag + '</mark>';
-          html += frag;
-        }
-    
-        textEl.innerHTML = html;
-        syncToUrl();
-      }
-    
-      function syncToUrl() {
-        try {
-          const u = new URL(window.parent.location.href);
-          u.searchParams.set(qpKey, encodeURIComponent(textEl.innerHTML));
-          window.parent.history.replaceState(null, '', u.toString());
-        } catch(e) {}
-      }
-    
-      // Hook selection buttons
-      addBtn.onclick = () => {
-        const off = selectionOffsets();
-        if (!off) return;
-        ranges.push(off);
-        ranges = merge(ranges);
+        const textEl = document.getElementById('text');
+        const addBtn = document.getElementById('addBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const qpKey = {_json.dumps(qp_key)};
+        // Original text INCLUDING ** markers (safe injected as a JS string)
+        const ORIG = {_json.dumps(text)};
+
+        // Highlight ranges live here (over BASE_TEXT coordinates)
+        let hlRanges = []; // [{start,end}]
+
+        function escapeHtml(s) {{
+          return s.replaceAll('&','&amp;')
+                  .replaceAll('<','&lt;')
+                  .replaceAll('>','&gt;')
+                  .replaceAll('"','&quot;')
+                  .replaceAll("'",'&#039;');
+        }}
+
+        // Parse **bold** once -> (BASE_TEXT, BOLD_RANGES over BASE_TEXT)
+        function parseBold(orig) {{
+          let bold = [];
+          let base = '';
+          let i = 0;
+          while (i < orig.length) {{
+            const open = orig.indexOf('**', i);
+            if (open === -1) {{ base += orig.slice(i); break; }}
+            // copy non-bold run
+            base += orig.slice(i, open);
+            const close = orig.indexOf('**', open + 2);
+            if (close === -1) {{ // unmatched; treat as plain
+              base += orig.slice(open);
+              break;
+            }}
+            const content = orig.slice(open + 2, close);
+            const start = base.length;
+            const end = start + content.length;
+            bold.push({{start, end}});
+            base += content;
+            i = close + 2;
+          }}
+          return {{ base, bold }};
+        }}
+
+        // Merge overlapping/adjacent ranges
+        function merge(rs) {{
+          if (!rs.length) return rs;
+          rs = rs.slice().sort((a,b)=>a.start-b.start);
+          const out = [rs[0]];
+          for (let i=1;i<rs.length;i++) {{
+            const last = out[out.length-1], cur = rs[i];
+            if (cur.start <= last.end) last.end = Math.max(last.end, cur.end);
+            else out.push(cur);
+          }}
+          return out;
+        }}
+
+        const {{ base: BASE_TEXT, bold: BOLD_RANGES }} = parseBold(ORIG);
+
+        // Build HTML by layering <strong> and <mark> over BASE_TEXT
+        function render() {{
+          const breaks = new Set([0, BASE_TEXT.length]);
+          for (const r of BOLD_RANGES) {{ breaks.add(r.start); breaks.add(r.end); }}
+          for (const r of hlRanges)   {{ breaks.add(r.start); breaks.add(r.end); }}
+          const pts = [...breaks].sort((a,b)=>a-b);
+
+          let html = '';
+          for (let i=0;i<pts.length-1;i++) {{
+            const a = pts[i], b = pts[i+1];
+            let frag = escapeHtml(BASE_TEXT.slice(a,b));
+
+            const inBold = BOLD_RANGES.some(r => a < r.end && b > r.start);
+            const inHl   = hlRanges.some(r => a < r.end && b > r.start);
+
+            if (inBold) frag = '<strong>' + frag + '</strong>';
+            if (inHl)   frag = '<mark>'   + frag + '</mark>';
+
+            html += frag;
+          }}
+
+          textEl.innerHTML = html;
+          syncToUrl();
+        }}
+
+        function syncToUrl() {{
+          try {{
+            const u = new URL(window.parent.location.href);
+            // Let URLSearchParams encode once; server can unquote once.
+            u.searchParams.set(qpKey, textEl.innerHTML);
+            window.parent.history.replaceState(null, '', u.toString());
+          }} catch(e) {{}}
+        }}
+
+        // Convert DOM selection to offsets over BASE_TEXT
+        function selectionOffsets() {{
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return null;
+          const rng = sel.getRangeAt(0);
+          if (!textEl.contains(rng.startContainer) || !textEl.contains(rng.endContainer)) return null;
+          const pre = document.createRange();
+          pre.setStart(textEl, 0);
+          pre.setEnd(rng.startContainer, rng.startOffset);
+          const start = pre.toString().length; // textContent length == BASE_TEXT length
+          const len = rng.toString().length;
+          return len > 0 ? {{ start, end: start + len }} : null;
+        }}
+
+        addBtn.onclick = () => {{
+          const off = selectionOffsets();
+          if (!off) return;
+          hlRanges.push(off);
+          hlRanges = merge(hlRanges);
+          render();
+        }};
+
+        clearBtn.onclick = () => {{
+          hlRanges = [];
+          render();
+        }};
+
+        // Ensure final sync before app's Save buttons fire
+        const hookSave = () => {{
+          try {{
+            const btns = window.parent.document.querySelectorAll('button');
+            btns.forEach(b => {{
+              if (b.__hl_hooked__) return;
+              const t = (b.textContent||'');
+              if (t.includes('Save Step 1') || t.includes('Save Step 2')) {{
+                b.__hl_hooked__ = true;
+                b.addEventListener('click', () => syncToUrl(), {{ capture:true }});
+              }}
+            }});
+          }} catch(e) {{}}
+        }};
+        try {{
+          const mo = new MutationObserver(hookSave);
+          mo.observe(window.parent.document.body, {{childList:true, subtree:true}});
+          hookSave();
+        }} catch(e) {{}}
+
+        // First paint (avoid flash of unstyled): show BASE_TEXT plain, then layer
+        textEl.textContent = BASE_TEXT;
         render();
-      };
-      clearBtn.onclick = () => { ranges = []; render(); };
-    
-      // Ensure a final sync right before parent "Save Step 1/2" is clicked
-      const hookSave = () => {
-        try {
-          const btns = window.parent.document.querySelectorAll('button');
-          btns.forEach(b => {
-            if (b.__hl_hooked__) return;
-            const t = (b.textContent||'');
-            if (t.includes('Save Step 1') || t.includes('Save Step 2')) {
-              b.__hl_hooked__ = true;
-              b.addEventListener('click', () => syncToUrl(), {capture:true});
-            }
-          });
-        } catch(e) {}
-      };
-      try {
-        const mo = new MutationObserver(hookSave);
-        mo.observe(window.parent.document.body, {childList:true, subtree:true});
-        hookSave();
-      } catch(e) {}
-    
-      // Initial paint: show base text with bold (no highlights)
-      textEl.innerHTML = escapeHtml(BASE_TEXT); // in case CSS flashes before render
-      render();
-    </script>
+      </script>
     </div>
     """
     _html(code, height=height + 70)
+
 
 
 
