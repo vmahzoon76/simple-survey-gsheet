@@ -729,27 +729,45 @@ with right:
                 tick_vals = list(np.arange(0, max_tick + 1, 24))
         
                 # Background shading (ED/ICU) as rectangles, if any
+                # Background shading (ED/ICU) as rectangles, if any
                 layers = []
                 if not intervals_df.empty:
-                    shade = alt.Chart(intervals_df).mark_rect(opacity=0.25).encode(
-                        x=alt.X("start:Q", title="Hours since admission",
-                                scale=alt.Scale(domain=[0, horizon_hours])),
-                        x2="end:Q",
-                        color=alt.Color("label:N", legend=alt.Legend(title="Care setting"),
-                                        scale=alt.Scale(domain=["ED","ICU"], range=["#fde68a", "#bfdbfe"]))
+                    shade = (
+                        alt.Chart(intervals_df)
+                        .mark_rect(opacity=0.25)
+                        .encode(
+                            x=alt.X("start:Q", title="Hours since admission",
+                                    scale=alt.Scale(domain=[0, horizon_hours])),
+                            x2="end:Q",
+                            color=alt.Color(
+                                "label:N",
+                                legend=alt.Legend(title="Care setting"),
+                                scale=alt.Scale(domain=["ED","ICU"], range=["#fde68a", "#bfdbfe"])
+                            ),
+                            tooltip=None   # 🔒 turn off tooltips for the shaded rectangles
+                        )
+                        .properties(zindex=0)  # keep behind line
                     )
                     layers.append(shade)
-        
+                
                 # SCr line on top (hours axis)
-                line = alt.Chart(src).mark_line(point=True).encode(
-                    x=alt.X("hours:Q",
+                line = (
+                    alt.Chart(src)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X(
+                            "hours:Q",
                             title="Hours since admission",
                             scale=alt.Scale(domain=[0, horizon_hours]),
-                            axis=alt.Axis(values=tick_vals)),
-                    y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
-                    tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]
+                            axis=alt.Axis(values=tick_vals)
+                        ),
+                        y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
+                        tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]  # ✅ show only SCr info
+                    )
+                    .properties(zindex=1)  # ensure line is drawn above the bands
                 )
                 layers.append(line)
+
         
                 ch_scr = alt.layer(*layers).resolve_scale(color='independent')
                 st.altair_chart(ch_scr, use_container_width=True)
