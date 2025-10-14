@@ -774,47 +774,47 @@ else:
         # Conditional fields if AKI == Yes
         # Conditional fields if AKI == Yes
         # Conditional fields if AKI == Yes
-q_etiology = ""
-q_stage = ""
-q_onset_exp = ""
-
-if q_aki2 == "Yes":
-    st.markdown("**If you believe this patient has AKI, please answer the following questions:**")
-
-    # --- Etiology: select then explain ---
-    etiology_options = ["Pre-renal", "Intrinsic", "Post-renal", "Obstruction", "Multi-factorial"]
-    q_etiology_choice = st.selectbox(
-        "AKI etiology — Choose ONE:",
-        etiology_options,
-        index=None,
-        placeholder="Select etiology"
-    )
-    q_etiology_expl = st.text_area(
-        "Briefly explain how you concluded the etiology:",
-        key="q2_etiology_expl",
-        height=120
-    )
-
-    # --- Stage: select then explain ---
-    stage_options = ["Stage 1", "Stage 2", "Stage 3", "Unclear"]
-    q_stage_choice = st.selectbox(
-        "AKI stage — Choose ONE:",
-        stage_options,
-        index=None,
-        placeholder="Select stage"
-    )
-    q_stage_expl = st.text_area(
-        "Briefly explain how you concluded the stage:",
-        key="q2_stage_expl",
-        height=120
-    )
-
-    # --- Onset explanation (free text) ---
-    q_onset_exp = st.text_area(
-        "AKI onset — When did it start, and how did you conclude it?",
-        key="q2_onset_explanation",
-        height=160
-    )
+        q_etiology = ""
+        q_stage = ""
+        q_onset_exp = ""
+        
+        if q_aki2 == "Yes":
+            st.markdown("**If you believe this patient has AKI, please answer the following questions:**")
+        
+            # --- Etiology: select then explain ---
+            etiology_options = ["Pre-renal", "Intrinsic", "Post-renal", "Obstruction", "Multi-factorial"]
+            q_etiology_choice = st.selectbox(
+                "AKI etiology — Choose ONE:",
+                etiology_options,
+                index=None,
+                placeholder="Select etiology"
+            )
+            q_etiology_expl = st.text_area(
+                "Briefly explain how you concluded the etiology:",
+                key="q2_etiology_expl",
+                height=120
+            )
+        
+            # --- Stage: select then explain ---
+            stage_options = ["Stage 1", "Stage 2", "Stage 3", "Unclear"]
+            q_stage_choice = st.selectbox(
+                "AKI stage — Choose ONE:",
+                stage_options,
+                index=None,
+                placeholder="Select stage"
+            )
+            q_stage_expl = st.text_area(
+                "Briefly explain how you concluded the stage:",
+                key="q2_stage_expl",
+                height=120
+            )
+        
+            # --- Onset explanation (free text) ---
+            q_onset_exp = st.text_area(
+                "AKI onset — When did it start, and how did you conclude it?",
+                key="q2_onset_explanation",
+                height=160
+            )
 
 
 
