@@ -656,7 +656,7 @@ disch_ts  = case.get("dischtime")
 edreg_ts  = case.get("edregtime")
 edout_ts  = case.get("edouttime")
 icu_in_ts = case.get("intime")
-icu_out_t s= case.get("outtime")
+icu_out_ts= case.get("outtime")
 
 
 
