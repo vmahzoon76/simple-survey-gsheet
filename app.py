@@ -30,6 +30,37 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 # -------------------- Helpers --------------------
 import re
 
+def _fmt_gender(g):
+    g = str(g).strip().upper()
+    return {"F": "Female", "M": "Male"}.get(g, "")
+
+def _fmt_num(x):
+    if x is None or (isinstance(x, float) and pd.isna(x)):
+        return ""
+    try:
+        v = float(x)
+        return str(int(v)) if v.is_integer() else f"{v:.1f}"
+    except Exception:
+        s = str(x).strip()
+        return "" if s.lower() in {"", "nan", "none"} else s
+
+def make_patient_blurb(age, gender, weight):
+    age_s     = _fmt_num(age)
+    gender_s  = _fmt_gender(gender)
+    weight_s  = _fmt_num(weight)
+
+    parts = []
+    if gender_s: parts.append(gender_s.lower())     # “female” / “male”
+    if age_s:    parts.append(f"age {age_s}")
+    if weight_s: parts.append(f"weight {weight_s} kg")
+
+    if parts:
+        core = ", ".join(parts)
+        return f"This admission is related to a patient ({core})."
+    else:
+        return "This admission is related to a patient."
+
+
 def _build_intervals_hours(admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts):
     """
     Return (intervals_df, horizon_hours) where intervals_df has columns:
@@ -538,8 +569,10 @@ except Exception:
 # ================== Worksheets (create if missing) ==================
 adm_headers = [
     "case_id", "title", "hadm_id", "DS_step1", "DS_step2", "weight",
+    "age", "gender",   # <-- add these two
     "admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"
 ]
+
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
     "timestamp_et", "reviewer_id", "case_id", "step",
@@ -657,6 +690,8 @@ edreg_ts  = case.get("edregtime")
 edout_ts  = case.get("edouttime")
 icu_in_ts = case.get("intime")
 icu_out_ts= case.get("outtime")
+age       = case.get("age", "")             # <-- new
+gender    = case.get("gender", "")          # <-- new
 
 
 
@@ -706,6 +741,9 @@ with right:
     else:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
+        # Right after: st.info("Step 2: Summary + Figures + Tables")
+        blurb = make_patient_blurb(age, gender, weight)
+        st.markdown(f"> {blurb} Below are serum creatinine (SCr) and urine output (UO) over time.")
 
         # A small helper for axis title depending on admittime presence
         x_title = "Hours since admission" if pd.notna(admit_ts) else "Time (no admission time found)"
