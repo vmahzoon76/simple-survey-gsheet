@@ -436,6 +436,40 @@ with st.sidebar:
             time.sleep(0.25)
             _rerun()
 
+        # --- Forgot ID: show known reviewers from 'responses' sheet ---
+    st.divider()
+    if st.button("Forgot your ID? Show known reviewers"):
+        try:
+            sh = _open_sheet_cached()  # uses st.secrets['gsheet_id']
+            try:
+                ws = _retry_gs(sh.worksheet, "responses")
+            except RuntimeError:
+                st.warning("No 'responses' sheet found yet.")
+            else:
+                recs = _retry_gs(ws.get_all_records)
+                df = pd.DataFrame(recs)
+
+                if df.empty or "reviewer_id" not in df.columns:
+                    st.info("No reviewers have submitted responses yet.")
+                else:
+                    # Clean and summarize
+                    df["timestamp_utc"] = pd.to_datetime(df.get("timestamp_utc"), errors="coerce")
+                    df["reviewer_id"] = df["reviewer_id"].astype(str).str.strip()
+
+                    grp = (
+                        df.loc[df["reviewer_id"] != ""]
+                        .groupby("reviewer_id", as_index=False)
+                        .agg(submissions=("reviewer_id", "size"),
+                             last_seen=("timestamp_utc", "max"))
+                    )
+                    grp = grp.sort_values(["submissions", "last_seen"], ascending=[False, False])
+
+                    st.caption("Known reviewers (from Responses):")
+                    st.dataframe(grp, use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"Could not load reviewers: {e}")
+
+
 if not st.session_state.entered:
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
