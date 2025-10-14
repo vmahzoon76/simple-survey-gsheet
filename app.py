@@ -6,6 +6,9 @@ import os
 import json
 import time
 from datetime import datetime
+import pytz
+from datetime import datetime
+
 
 
 import pandas as pd
@@ -453,14 +456,14 @@ with st.sidebar:
                     st.info("No reviewers have submitted responses yet.")
                 else:
                     # Clean and summarize
-                    df["timestamp_utc"] = pd.to_datetime(df.get("timestamp_utc"), errors="coerce")
+                    df["timestamp_et"] = pd.to_datetime(df.get("timestamp_et"), errors="coerce")
                     df["reviewer_id"] = df["reviewer_id"].astype(str).str.strip()
 
                     grp = (
                         df.loc[df["reviewer_id"] != ""]
                         .groupby("reviewer_id", as_index=False)
                         .agg(submissions=("reviewer_id", "size"),
-                             last_seen=("timestamp_utc", "max"))
+                             last_seen=("timestamp_et", "max"))
                     )
                     grp = grp.sort_values(["submissions", "last_seen"], ascending=[False, False])
 
@@ -493,7 +496,7 @@ except Exception:
 adm_headers = ["case_id", "title", "hadm_id", "DS_step1", "DS_step2", "weight", "admittime"]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
-    "timestamp_utc", "reviewer_id", "case_id", "step",
+    "timestamp_et", "reviewer_id", "case_id", "step",
     "aki",                     # "Yes"/"No"
     "highlight_html",          # <mark>...</mark> from this step
     "rationale",               # free-text rationale (Step 1) or empty on Step 2
@@ -740,7 +743,7 @@ if st.session_state.step == 1:
             hl_html = _strip_strong_only(hl_html) 
 
             row = {
-                "timestamp_utc": datetime.utcnow().isoformat(),
+                "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
@@ -871,7 +874,7 @@ else:
             hl_html2 = _strip_strong_only(hl_html2) 
 
             row = {
-                        "timestamp_utc": datetime.utcnow().isoformat(),
+                        "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
                         "reviewer_id": st.session_state.reviewer_id,
                         "case_id": case_id,
                         "step": 2,
