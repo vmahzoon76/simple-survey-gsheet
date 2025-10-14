@@ -588,7 +588,7 @@ uo  = case_labs[case_labs["_kind_lower"] != "scr"].sort_values("timestamp").copy
 
 
 # ================== Layout ==================
-left, right = st.columns([3, 4], gap="large")
+left, right = st.columns([5, 4], gap="large")
 
 with left:
     st.markdown("**Discharge Summary (highlight directly in the text below)**")
@@ -628,10 +628,10 @@ with right:
                 )
             st.markdown("**Serum Creatinine**")
             st.altair_chart(ch_scr, use_container_width=True)
-            st.caption("Table — SCr:")
-            scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
-            scr_table["hours"] = _hours_to_int(scr_table["hours"])
-            st.dataframe(scr_table, use_container_width=True)
+            # st.caption("Table — SCr:")
+            # scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
+            # scr_table["hours"] = _hours_to_int(scr_table["hours"])
+            # st.dataframe(scr_table, use_container_width=True)
 
         else:
             st.warning("No SCr values for this case.")
@@ -656,10 +656,10 @@ with right:
             st.markdown("**Urine Output**")
             st.altair_chart(ch_uo, use_container_width=True)
 
-            st.caption("Table — UO (original item names retained in `kind`):")
-            uo_table = uox[["hours", "timestamp", "kind", "uo_value", "unit"]].rename(columns={"uo_value": "value"})
-            uo_table["hours"] = _hours_to_int(uo_table["hours"])
-            st.dataframe(uo_table, use_container_width=True)
+            # st.caption("Table — UO (original item names retained in `kind`):")
+            # uo_table = uox[["hours", "timestamp", "kind", "uo_value", "unit"]].rename(columns={"uo_value": "value"})
+            # uo_table["hours"] = _hours_to_int(uo_table["hours"])
+            # st.dataframe(uo_table, use_container_width=True)
 
         else:
             st.warning("No UO values for this case.")
@@ -683,7 +683,14 @@ if st.session_state.step == 1:
             height=140, key="q1_rationale"
         )
 
-        q_conf = st.slider("How confident are you in your assessment? (1–5)", 1, 5, 3, key="q1_conf")
+        q_conf = st.select_slider(
+            "How confident are you in your assessment?",
+            options=[1, 2, 3, 4, 5],
+            value=3,
+            key="q1_conf",
+            help="1 = not confident, 5 = very confident"
+        )
+
 
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
@@ -749,7 +756,14 @@ else:
         )
 
         # Confidence for Step 2 as well
-        q_conf2 = st.slider("How confident are you in your Step 2 assessment? (1–5)", 1, 5, 3, key="q2_conf")
+        q_conf2 = st.select_slider(
+            "Confidence (choose 1–5)",
+            options=[1, 2, 3, 4, 5],
+            value=3,
+            key="q2_conf",
+            help="1 = not confident, 5 = very confident"
+        )
+
 
         # Think-aloud reasoning (keep)
         q_reasoning = st.text_area(
@@ -759,27 +773,49 @@ else:
 
         # Conditional fields if AKI == Yes
         # Conditional fields if AKI == Yes
-        q_etiology = ""
-        q_stage = ""
-        q_onset_exp = ""
-        
-        if q_aki2 == "Yes":
-            st.markdown("**If you believe this patient has AKI, please answer the following questions:**")
-            q_etiology = st.text_area(
-                "AKI etiology —  What was the reason behind AKI? choose ONE (Pre-renal / Intrinsic / Post-renal / Multi-factorial) and explain how you concluded it:",
-                key="q2_etiology",
-                height=120
-            )
-            q_stage = st.text_area(
-                "AKI stage — What stage of AKI do you believe the patient reached? choose ONE (Stage 1 / Stage 2 / Stage 3 / Unclear) and explain how you concluded it:",
-                key="q2_stage",
-                height=120
-            )
-            q_onset_exp = st.text_area(
-                "AKI onset — when did it start, and how did you conclude it?",
-                key="q2_onset_explanation",
-                height=160
-            )
+        # Conditional fields if AKI == Yes
+q_etiology = ""
+q_stage = ""
+q_onset_exp = ""
+
+if q_aki2 == "Yes":
+        st.markdown("**If you believe this patient has AKI, please answer the following questions:**")
+    
+        # --- Etiology: select then explain ---
+        etiology_options = ["Pre-renal", "Intrinsic", "Post-renal", "Obstruction", "Multi-factorial"]
+        q_etiology_choice = st.selectbox(
+            "AKI etiology — Choose ONE:",
+            etiology_options,
+            index=None,
+            placeholder="Select etiology"
+        )
+        q_etiology_expl = st.text_area(
+            "Briefly explain how you concluded the etiology:",
+            key="q2_etiology_expl",
+            height=120
+        )
+    
+        # --- Stage: select then explain ---
+        stage_options = ["Stage 1", "Stage 2", "Stage 3", "Unclear"]
+        q_stage_choice = st.selectbox(
+            "AKI stage — Choose ONE:",
+            stage_options,
+            index=None,
+            placeholder="Select stage"
+        )
+        q_stage_expl = st.text_area(
+            "Briefly explain how you concluded the stage:",
+            key="q2_stage_expl",
+            height=120
+        )
+    
+        # --- Onset explanation (free text) ---
+        q_onset_exp = st.text_area(
+            "AKI onset — When did it start, and how did you conclude it?",
+            key="q2_onset_explanation",
+            height=160
+        )
+
 
 
         submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
@@ -801,13 +837,14 @@ else:
                 "step": 2,
                 "aki": q_aki2,
                 "highlight_html": hl_html2,
-                "rationale": "",                 # Step 2: keep empty (rationale belongs to Step 1)
+                "rationale": "",
                 "confidence": q_conf2,
-                "reasoning": q_reasoning,        # think-aloud
-                "aki_etiology": (q_etiology if q_aki2 == "Yes" else ""),
-                "aki_stage": (q_stage if q_aki2 == "Yes" else ""),
+                "reasoning": q_reasoning,
+                "aki_etiology": (f"{q_etiology_choice or ''} — {q_etiology_expl.strip()}" if q_aki2 == "Yes" else ""),
+                "aki_stage": (f"{q_stage_choice or ''} — {q_stage_expl.strip()}" if q_aki2 == "Yes" else ""),
                 "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
             }
+
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
 
             # Clear Step-2 highlight param and advance
