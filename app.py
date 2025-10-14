@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 import pytz
 from datetime import datetime
+import numpy as np
 
 
 
@@ -31,6 +32,50 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
 # -------------------- Helpers --------------------
 import re
+
+def _build_intervals_hours(admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts):
+    """
+    Return (intervals_df, horizon_hours) where intervals_df has columns:
+      label ('ED'/'ICU'), start (hours), end (hours)
+    All intervals are clipped to [0, horizon].
+    If admit/discharge missing/invalid, returns (empty_df, None).
+    """
+    if pd.isna(admit_ts) or pd.isna(disch_ts) or (disch_ts < admit_ts):
+        return pd.DataFrame(columns=["label","start","end"]), None
+
+    horizon_hours = (disch_ts - admit_ts).total_seconds() / 3600.0
+
+    def _to_hours(ts):
+        if pd.isna(ts):
+            return None
+        return (ts - admit_ts).total_seconds() / 3600.0
+
+    raw = []
+    # ED band
+    s, e = _to_hours(edreg_ts), _to_hours(edout_ts)
+    if s is not None:
+        e = horizon_hours if e is None else e
+        if e is not None:
+            if e < s: s, e = e, s
+            raw.append(("ED", s, e))
+    # ICU band
+    s, e = _to_hours(icu_in_ts), _to_hours(icu_out_ts)
+    if s is not None:
+        e = horizon_hours if e is None else e
+        if e is not None:
+            if e < s: s, e = e, s
+            raw.append(("ICU", s, e))
+
+    # Clip to [0, horizon]
+    clipped = []
+    for lbl, s, e in raw:
+        s2 = max(0.0, s)
+        e2 = min(horizon_hours, e)
+        if e2 > s2:  # keep only positive-length ranges
+            clipped.append((lbl, s2, e2))
+
+    return pd.DataFrame(clipped, columns=["label","start","end"]), horizon_hours
+
 
 def _strip_strong_only(html: str) -> str:
     """Remove <strong> (and <b>) tags but keep everything else, esp. <mark>."""
@@ -493,7 +538,10 @@ except Exception:
     pass
 
 # ================== Worksheets (create if missing) ==================
-adm_headers = ["case_id", "title", "hadm_id", "DS_step1", "DS_step2", "weight", "admittime"]
+adm_headers = [
+    "case_id", "title", "hadm_id", "DS_step1", "DS_step2", "weight",
+    "admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"
+]
 labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
     "timestamp_et", "reviewer_id", "case_id", "step",
@@ -521,8 +569,17 @@ admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
-admissions["admittime"] = pd.to_datetime(admissions["admittime"], errors="coerce")
+admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
+labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
+responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
+
+# Parse all relevant times
+for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"]:
+    if _c in admissions.columns:
+        admissions[_c] = pd.to_datetime(admissions[_c], errors="coerce")
+
 labs["timestamp"] = pd.to_datetime(labs["timestamp"], errors="coerce")
+
 
 
 
@@ -595,6 +652,13 @@ summary1  = str(case.get("DS_step1", ""))   # Step 1 text
 summary2  = str(case.get("DS_step2", ""))   # Step 2 text
 weight    = case.get("weight", "")
 admit_ts  = case.get("admittime")           # pandas.Timestamp or NaT
+# Additional timestamps for shading/axis
+disch_ts  = case.get("dischtime")
+edreg_ts  = case.get("edregtime")
+edout_ts  = case.get("edouttime")
+icu_in_ts = case.get("intime")
+icu_out_ts= case.get("outtime")
+
 
 
 st.caption(
@@ -648,23 +712,57 @@ with right:
         x_title = "Hours since admission" if pd.notna(admit_ts) else "Time (no admission time found)"
 
         # --------- SCr ----------
+        # --------- SCr ----------
         if not scr.empty:
-            src = scr.rename(columns={"value": "scr_value"})
-            # Prefer hours axis when possible; fall back to actual timestamp
-            if pd.notna(admit_ts) and src["hours"].notna().any():
-                ch_scr = alt.Chart(src).mark_line(point=True).encode(
-                    x=alt.X("hours:Q", title=x_title),
+            src = scr.rename(columns={"value": "scr_value"}).copy()
+        
+            # Build ED/ICU intervals and fixed 0→discharge axis if possible
+            intervals_df, horizon_hours = _build_intervals_hours(
+                admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
+            )
+        
+            st.markdown("**Serum Creatinine**")
+        
+            if (horizon_hours is not None) and (src["hours"].notna().any()):
+                # Fixed domain [0, horizon], ticks every 24h
+                max_tick = int(np.ceil(horizon_hours / 24.0) * 24)
+                tick_vals = list(np.arange(0, max_tick + 1, 24))
+        
+                # Background shading (ED/ICU) as rectangles, if any
+                layers = []
+                if not intervals_df.empty:
+                    shade = alt.Chart(intervals_df).mark_rect(opacity=0.25).encode(
+                        x=alt.X("start:Q", title="Hours since admission",
+                                scale=alt.Scale(domain=[0, horizon_hours])),
+                        x2="end:Q",
+                        color=alt.Color("label:N", legend=alt.Legend(title="Care setting"),
+                                        scale=alt.Scale(domain=["ED","ICU"], range=["#fde68a", "#bfdbfe"]))
+                    )
+                    layers.append(shade)
+        
+                # SCr line on top (hours axis)
+                line = alt.Chart(src).mark_line(point=True).encode(
+                    x=alt.X("hours:Q",
+                            title="Hours since admission",
+                            scale=alt.Scale(domain=[0, horizon_hours]),
+                            axis=alt.Axis(values=tick_vals)),
                     y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
                     tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]
                 )
+                layers.append(line)
+        
+                ch_scr = alt.layer(*layers).resolve_scale(color='independent')
+                st.altair_chart(ch_scr, use_container_width=True)
+        
             else:
+                # Fallback: no fixed horizon; draw without bands on timestamp
                 ch_scr = alt.Chart(src).mark_line(point=True).encode(
                     x=alt.X("timestamp:T", title="Time"),
                     y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
                     tooltip=["timestamp:T", "scr_value:Q", "unit:N", "kind:N"]
                 )
-            st.markdown("**Serum Creatinine**")
-            st.altair_chart(ch_scr, use_container_width=True)
+                st.altair_chart(ch_scr, use_container_width=True)
+
             # st.caption("Table — SCr:")
             # scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
             # scr_table["hours"] = _hours_to_int(scr_table["hours"])
