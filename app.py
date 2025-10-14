@@ -438,7 +438,7 @@ with st.sidebar:
 
         # --- Forgot ID: show known reviewers from 'responses' sheet ---
     st.divider()
-    if st.button("Forgot your ID? Show known reviewers"):
+    if st.button("Forgot your ID?"):
         try:
             sh = _open_sheet_cached()  # uses st.secrets['gsheet_id']
             try:
