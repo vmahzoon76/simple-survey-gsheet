@@ -743,7 +743,7 @@ if st.session_state.step == 1:
             hl_html = _strip_strong_only(hl_html) 
 
             row = {
-                "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat().strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
@@ -874,7 +874,7 @@ else:
             hl_html2 = _strip_strong_only(hl_html2) 
 
             row = {
-                        "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat().strftime("%Y-%m-%d %H:%M:%S %Z"),
+                        "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
                         "reviewer_id": st.session_state.reviewer_id,
                         "case_id": case_id,
                         "step": 2,
