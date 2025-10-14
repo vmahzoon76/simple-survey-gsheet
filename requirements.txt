@@ -7,4 +7,5 @@ streamlit-quill
 markdown
 pymdown-extensions
 streamlit-js-eval
+numpy
 
