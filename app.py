@@ -784,12 +784,12 @@ else:
         q_onset_exp = ""
         
         if q_aki2 == "Yes":
-            st.markdown("**If you believe this patient has AKI, please answer the following questions:**")
+            st.markdown("**If you believe this patient had AKI, please answer the following questions:**")
         
             # --- Etiology: radio then explain ---
             etiology_options = ["Pre-renal", "Intrinsic", "Post-renal", "Obstruction", "Multi-factorial"]
             q_etiology_choice = st.radio(
-                "AKI etiology — Choose ONE:",
+                "AKI etiology — What was the reason behind AKI?",
                 options=etiology_options,
                 horizontal=True,
                 key="q2_etiology_choice",
@@ -803,7 +803,7 @@ else:
             # --- Stage: radio then explain ---
             stage_options = ["Stage 1", "Stage 2", "Stage 3", "Unclear"]
             q_stage_choice = st.radio(
-                "AKI stage — Choose ONE:",
+                "AKI stage — What stage of AKI do you believe the patient reached?:",
                 options=stage_options,
                 horizontal=True,
                 key="q2_stage_choice",
