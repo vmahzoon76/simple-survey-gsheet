@@ -683,13 +683,14 @@ if st.session_state.step == 1:
             height=140, key="q1_rationale"
         )
 
-        q_conf = st.select_slider(
-            "How confident are you in your assessment?",
+        q_conf = st.radio(
+            "Confidence (choose 1–5)",
             options=[1, 2, 3, 4, 5],
-            value=3,
+            index=2,  # default = 3
+            horizontal=True,
             key="q1_conf",
-            help="1 = not confident, 5 = very confident"
-        )
+            )
+        
 
 
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
@@ -756,13 +757,14 @@ else:
         )
 
         # Confidence for Step 2 as well
-        q_conf2 = st.select_slider(
+        q_conf2 = st.radio(
             "Confidence (choose 1–5)",
             options=[1, 2, 3, 4, 5],
-            value=3,
+            index=2,  # default = 3
+            horizontal=True,
             key="q2_conf",
-            help="1 = not confident, 5 = very confident"
         )
+
 
 
         # Think-aloud reasoning (keep)
@@ -774,37 +776,40 @@ else:
         # Conditional fields if AKI == Yes
         # Conditional fields if AKI == Yes
         # Conditional fields if AKI == Yes
-        q_etiology = ""
-        q_stage = ""
+        # Conditional fields if AKI == Yes
+        q_etiology_choice = ""
+        q_etiology_expl = ""
+        q_stage_choice = ""
+        q_stage_expl = ""
         q_onset_exp = ""
         
         if q_aki2 == "Yes":
             st.markdown("**If you believe this patient has AKI, please answer the following questions:**")
         
-            # --- Etiology: select then explain ---
+            # --- Etiology: radio then explain ---
             etiology_options = ["Pre-renal", "Intrinsic", "Post-renal", "Obstruction", "Multi-factorial"]
-            q_etiology_choice = st.selectbox(
+            q_etiology_choice = st.radio(
                 "AKI etiology — Choose ONE:",
-                etiology_options,
-                index=None,
-                placeholder="Select etiology"
+                options=etiology_options,
+                horizontal=True,
+                key="q2_etiology_choice",
             )
             q_etiology_expl = st.text_area(
-                "Briefly explain how you concluded the etiology:",
+                "Please explain how you concluded the etiology:",
                 key="q2_etiology_expl",
                 height=120
             )
         
-            # --- Stage: select then explain ---
+            # --- Stage: radio then explain ---
             stage_options = ["Stage 1", "Stage 2", "Stage 3", "Unclear"]
-            q_stage_choice = st.selectbox(
+            q_stage_choice = st.radio(
                 "AKI stage — Choose ONE:",
-                stage_options,
-                index=None,
-                placeholder="Select stage"
+                options=stage_options,
+                horizontal=True,
+                key="q2_stage_choice",
             )
             q_stage_expl = st.text_area(
-                "Briefly explain how you concluded the stage:",
+                "Please explain how you concluded the stage:",
                 key="q2_stage_expl",
                 height=120
             )
@@ -815,6 +820,7 @@ else:
                 key="q2_onset_explanation",
                 height=160
             )
+
 
 
 
@@ -831,19 +837,20 @@ else:
             hl_html2 = _strip_strong_only(hl_html2) 
 
             row = {
-                "timestamp_utc": datetime.utcnow().isoformat(),
-                "reviewer_id": st.session_state.reviewer_id,
-                "case_id": case_id,
-                "step": 2,
-                "aki": q_aki2,
-                "highlight_html": hl_html2,
-                "rationale": "",
-                "confidence": q_conf2,
-                "reasoning": q_reasoning,
-                "aki_etiology": (f"{q_etiology_choice or ''} — {q_etiology_expl.strip()}" if q_aki2 == "Yes" else ""),
-                "aki_stage": (f"{q_stage_choice or ''} — {q_stage_expl.strip()}" if q_aki2 == "Yes" else ""),
-                "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
-            }
+                        "timestamp_utc": datetime.utcnow().isoformat(),
+                        "reviewer_id": st.session_state.reviewer_id,
+                        "case_id": case_id,
+                        "step": 2,
+                        "aki": q_aki2,
+                        "highlight_html": hl_html2,
+                        "rationale": "",
+                        "confidence": q_conf2,
+                        "reasoning": q_reasoning,
+                        "aki_etiology": (f"{q_etiology_choice} — {q_etiology_expl.strip()}" if q_aki2 == "Yes" else ""),
+                        "aki_stage": (f"{q_stage_choice} — {q_stage_expl.strip()}" if q_aki2 == "Yes" else ""),
+                        "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
+                    }
+
 
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
 
