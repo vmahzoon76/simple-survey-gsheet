@@ -1,7 +1,4 @@
 
-
-
-
 import os
 import json
 import time
@@ -41,7 +38,7 @@ def _build_intervals_hours(admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, ic
     If admit/discharge missing/invalid, returns (empty_df, None).
     """
     if pd.isna(admit_ts) or pd.isna(disch_ts) or (disch_ts < admit_ts):
-        return pd.DataFrame(columns=["label","start","end"]), None
+        return pd.DataFrame(columns=["label" ,"start" ,"end"]), None
 
     horizon_hours = (disch_ts - admit_ts).total_seconds() / 3600.0
 
@@ -74,7 +71,7 @@ def _build_intervals_hours(admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, ic
         if e2 > s2:  # keep only positive-length ranges
             clipped.append((lbl, s2, e2))
 
-    return pd.DataFrame(clipped, columns=["label","start","end"]), horizon_hours
+    return pd.DataFrame(clipped, columns=["label" ,"start" ,"end"]), horizon_hours
 
 
 def _strip_strong_only(html: str) -> str:
@@ -389,7 +386,8 @@ def _open_sheet_cached():
 
     client = _get_client_cached()
     if client is None:
-        raise RuntimeError("Google Sheets client not available. Ensure Secrets/service_account or service_account.json is present.")
+        raise RuntimeError \
+            ("Google Sheets client not available. Ensure Secrets/service_account or service_account.json is present.")
 
     last_err = None
     for i in range(6):
@@ -608,7 +606,8 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
 
         # Sets of finished/started cases
         completed_ids = set(resp.loc[resp["step"] == 2, "case_id"].astype(str)) if not resp.empty else set()
-        step1_only_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
+        step1_only_ids = set \
+            (resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
 
         # Find first admission not fully completed
         target_idx = None
@@ -657,7 +656,7 @@ disch_ts  = case.get("dischtime")
 edreg_ts  = case.get("edregtime")
 edout_ts  = case.get("edouttime")
 icu_in_ts = case.get("intime")
-icu_out_ts= case.get("outtime")
+icu_out_t s= case.get("outtime")
 
 
 
@@ -715,34 +714,23 @@ with right:
         # --------- SCr ----------
         if not scr.empty:
             src = scr.rename(columns={"value": "scr_value"}).copy()
-        
+
             # Build ED/ICU intervals and fixed 0→discharge axis if possible
             intervals_df, horizon_hours = _build_intervals_hours(
                 admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
             )
-        
+
             st.markdown("**Serum Creatinine**")
-        
+
             if (horizon_hours is not None) and (src["hours"].notna().any()):
                 # Fixed domain [0, horizon], ticks every 24h
                 max_tick = int(np.ceil(horizon_hours / 24.0) * 24)
                 tick_vals = list(np.arange(0, max_tick + 1, 24))
-        
-                # Background shading (ED/ICU) as rectangles, if any
-                # Background shading (ED/ICU) as rectangles, if any
-                # Background shading (ED/ICU) as rectangles, if any
-                layers = []
-                if not intervals_df.empty:
-                    shade = alt.Chart(intervals_df).mark_rect(opacity=0.25).encode(
-                        x=alt.X("start:Q", title="Hours since admission",
-                                scale=alt.Scale(domain=[0, horizon_hours])),
-                        x2="end:Q",
-                        color=alt.Color("label:N", legend=alt.Legend(title="Care setting"),
-                                        scale=alt.Scale(domain=["ED","ICU"], range=["#fde68a", "#bfdbfe"]))
-                    )
-                    layers.append(shade)
 
-                # SCr line on top (hours axis)
+                # Background shading (ED/ICU) as rectangles, if any
+                # Background shading (ED/ICU) as rectangles, if any
+                # Background shading (ED/ICU) as rectangles, if any
+                # SCr line (make this the FIRST layer so "View data" shows SCr points)
                 line = alt.Chart(src).mark_line(point=True).encode(
                     x=alt.X("hours:Q",
                             title="Hours since admission",
@@ -751,14 +739,21 @@ with right:
                     y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
                     tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]
                 )
-                layers.append(line)
 
+                if not intervals_df.empty:
+                    shade = alt.Chart(intervals_df).mark_rect(opacity=0.25).encode(
+                        x=alt.X("start:Q", title="Hours since admission",
+                                scale=alt.Scale(domain=[0, horizon_hours])),
+                        x2="end:Q",
+                        color=alt.Color("label:N", legend=alt.Legend(title="Care setting"),
+                                        scale=alt.Scale(domain=["ED", "ICU"], range=["#fde68a", "#bfdbfe"]))
+                    )
+                    ch_scr = alt.layer(line, shade).resolve_scale(color='independent')
+                else:
+                    ch_scr = line
 
-
-        
-                ch_scr = alt.layer(*layers).resolve_scale(color='independent')
                 st.altair_chart(ch_scr, use_container_width=True)
-        
+
             else:
                 # Fallback: no fixed horizon; draw without bands on timestamp
                 ch_scr = alt.Chart(src).mark_line(point=True).encode(
@@ -829,8 +824,8 @@ if st.session_state.step == 1:
             index=2,  # default = 3
             horizontal=True,
             key="q1_conf",
-            )
-        
+        )
+
 
 
         submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
@@ -843,7 +838,7 @@ if st.session_state.step == 1:
             qp_key = f"hl_step1_{case_id}"
             qp = st.query_params
             hl_html = urllib.parse.unquote(qp.get(qp_key, "")) if qp_key in qp else ""
-            hl_html = _strip_strong_only(hl_html) 
+            hl_html = _strip_strong_only(hl_html)
 
             row = {
                 "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
@@ -922,10 +917,10 @@ else:
         q_stage_choice = ""
         q_stage_expl = ""
         q_onset_exp = ""
-        
+
         if q_aki2 == "Yes":
             st.markdown("**If you believe this patient had AKI, please answer the following questions:**")
-        
+
             # --- Etiology: radio then explain ---
             etiology_options = ["Pre-renal", "Intrinsic", "Post-renal", "Obstruction", "Multi-factorial"]
             q_etiology_choice = st.radio(
@@ -939,7 +934,7 @@ else:
                 key="q2_etiology_expl",
                 height=120
             )
-        
+
             # --- Stage: radio then explain ---
             stage_options = ["Stage 1", "Stage 2", "Stage 3", "Unclear"]
             q_stage_choice = st.radio(
@@ -953,7 +948,7 @@ else:
                 key="q2_stage_expl",
                 height=120
             )
-        
+
             # --- Onset explanation (free text) ---
             q_onset_exp = st.text_area(
                 "AKI onset — When did it start, and how did you conclude it?",
@@ -974,22 +969,22 @@ else:
             qp_key2 = f"hl_step2_{case_id}"
             qp = st.query_params
             hl_html2 = urllib.parse.unquote(qp.get(qp_key2, "")) if qp_key2 in qp else ""
-            hl_html2 = _strip_strong_only(hl_html2) 
+            hl_html2 = _strip_strong_only(hl_html2)
 
             row = {
-                        "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
-                        "reviewer_id": st.session_state.reviewer_id,
-                        "case_id": case_id,
-                        "step": 2,
-                        "aki": q_aki2,
-                        "highlight_html": hl_html2,
-                        "rationale": "",
-                        "confidence": q_conf2,
-                        "reasoning": q_reasoning,
-                        "aki_etiology": (f"{q_etiology_choice} — {q_etiology_expl.strip()}" if q_aki2 == "Yes" else ""),
-                        "aki_stage": (f"{q_stage_choice} — {q_stage_expl.strip()}" if q_aki2 == "Yes" else ""),
-                        "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
-                    }
+                "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
+                "reviewer_id": st.session_state.reviewer_id,
+                "case_id": case_id,
+                "step": 2,
+                "aki": q_aki2,
+                "highlight_html": hl_html2,
+                "rationale": "",
+                "confidence": q_conf2,
+                "reasoning": q_reasoning,
+                "aki_etiology": (f"{q_etiology_choice} — {q_etiology_expl.strip()}" if q_aki2 == "Yes" else ""),
+                "aki_stage": (f"{q_stage_choice} — {q_stage_expl.strip()}" if q_aki2 == "Yes" else ""),
+                "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
+            }
 
 
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
@@ -1031,9 +1026,3 @@ with c3:
         _scroll_top()
         time.sleep(0.18)
         _rerun()
-
-
-
-
-
-
