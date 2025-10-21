@@ -852,7 +852,7 @@ if st.session_state.step == 1:
 
         # Bring back rationale
         q_rationale = st.text_area(
-            "Please provide a brief rationale for your assessment.",
+            "Please provide a brief rationale for your assessment. Please also highlight in the note any specific text that impacted your conclusion.",
             height=140, key="q1_rationale"
         )
 
@@ -948,7 +948,7 @@ else:
 
         # Think-aloud reasoning (keep)
         q_reasoning = st.text_area(
-            "Please explain the reason for your decision.",
+            "Please explain the reason for your decision. Please also highlight in the note any specific text that impacted your conclusion.",
             height=180, key="q2_reasoning"
         )
 
