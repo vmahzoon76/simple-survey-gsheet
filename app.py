@@ -846,9 +846,8 @@ with right:
                 proc_case = proc[proc["case_id"].astype(str) == case_id].copy()
 
                 if not proc_case.empty:
-                    st.markdown("**Procedures for this admission (from procedure codes)**")
-                    st.caption("Note: Procedure dates are stored without hour information; "
-                               "day differences are approximate relative to admission time.")
+                    st.markdown("**Procedures**")
+                  
 
                     # --- Parse chartdate as datetime (midnight assumed) ---
                     proc_case["chartdate"] = pd.to_datetime(proc_case["chartdate"], errors="coerce")
