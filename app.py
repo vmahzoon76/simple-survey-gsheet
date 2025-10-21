@@ -838,6 +838,36 @@ with right:
             st.warning("No UO values for this case.")
 
 
+                # --------- PROCEDURES TABLE ----------
+        try:
+            proc = _read_ws_df(st.secrets["gsheet_id"], "proc")
+            if not proc.empty:
+                proc_case = proc[proc["case_id"].astype(str) == case_id].copy()
+
+                if not proc_case.empty:
+                    st.markdown("**Procedures for this admission (from procedure codes)**")
+                    proc_case = proc_case[["chartdate", "icd_code", "icd_version", "long_title"]].rename(
+                        columns={
+                            "chartdate": "Date",
+                            "icd_code": "ICD Code",
+                            "icd_version": "Version",
+                            "long_title": "Procedure Description",
+                        }
+                    )
+                    st.dataframe(
+                        proc_case.sort_values("Date"),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.info("No procedures recorded for this case.")
+            else:
+                st.warning("Procedure sheet ('proc') is empty.")
+        except Exception as e:
+            st.error(f"Could not load procedures: {e}")
+
+
+
 st.markdown("---")
 
 # ================== Questions & Saving ==================
