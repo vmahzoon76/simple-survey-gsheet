@@ -842,7 +842,7 @@ st.markdown("---")
 
 # ================== Questions & Saving ==================
 if st.session_state.step == 1:
-    st.subheader("Step 1 — Questions (Narrative Only)")
+    st.subheader("Step 1 — Questions")
 
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
