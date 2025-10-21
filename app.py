@@ -741,238 +741,140 @@ with right:
     else:
         st.info("Step 2: Summary + Figures + Tables")
         import altair as alt
-        # Right after: st.info("Step 2: Summary + Figures + Tables")
         blurb = make_patient_blurb(age, gender, weight)
-        st.markdown(f"> {blurb} Below are serum creatinine (SCr) and urine output (UO) over time.")
+        st.markdown(f"> {blurb} Click on a tab below to explore each visualization.")
 
-        # A small helper for axis title depending on admittime presence
-        x_title = "Hours since admission" if pd.notna(admit_ts) else "Time (no admission time found)"
+        # --- Tabs for four visualizations ---
+        tabs = st.tabs([
+            "Serum Creatinine (SCr)",
+            "Urine Output (UO)",
+            "Intake / Output",
+            "Procedures"
+        ])
 
-        # --------- SCr ----------
-        # --------- SCr ----------
-        if not scr.empty:
-            src = scr.rename(columns={"value": "scr_value"}).copy()
-
-            # Build ED/ICU intervals and fixed 0→discharge axis if possible
-            intervals_df, horizon_hours = _build_intervals_hours(
-                admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
-            )
-
-            st.markdown("**Serum Creatinine**")
-
-            if (horizon_hours is not None) and (src["hours"].notna().any()):
-                # Fixed domain [0, horizon], ticks every 24h
-                max_tick = int(np.ceil(horizon_hours / 24.0) * 24)
-                tick_vals = list(np.arange(0, max_tick + 1, 24))
-
-                # Background shading (ED/ICU) as rectangles, if any
-                # Background shading (ED/ICU) as rectangles, if any
-                # Background shading (ED/ICU) as rectangles, if any
-                # SCr line (make this the FIRST layer so "View data" shows SCr points)
-                line = alt.Chart(src).mark_line(point=True).encode(
-                    x=alt.X("hours:Q",
-                            title="Hours since admission",
-                            scale=alt.Scale(domain=[0, horizon_hours]),
-                            axis=alt.Axis(values=tick_vals)),
-                    y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
-                    tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]
+        # -------- Tab 1: Serum Creatinine --------
+        with tabs[0]:
+            st.markdown("**Serum Creatinine (mg/dL)**")
+            if not scr.empty:
+                src = scr.rename(columns={"value": "scr_value"}).copy()
+                intervals_df, horizon_hours = _build_intervals_hours(
+                    admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
                 )
-
-                if not intervals_df.empty:
-                    shade = alt.Chart(intervals_df).mark_rect(opacity=0.25).encode(
-                        x=alt.X("start:Q", title="Hours since admission",
-                                scale=alt.Scale(domain=[0, horizon_hours])),
-                        x2="end:Q",
-                        color=alt.Color("label:N", legend=alt.Legend(title="Care setting"),
-                                        scale=alt.Scale(domain=["ED", "ICU"], range=["#fde68a", "#bfdbfe"]))
+                if (horizon_hours is not None) and (src["hours"].notna().any()):
+                    max_tick = int(np.ceil(horizon_hours / 24.0) * 24)
+                    tick_vals = list(np.arange(0, max_tick + 1, 24))
+                    line = alt.Chart(src).mark_line(point=True).encode(
+                        x=alt.X("hours:Q",
+                                title="Hours since admission",
+                                scale=alt.Scale(domain=[0, horizon_hours]),
+                                axis=alt.Axis(values=tick_vals)),
+                        y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
+                        tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]
                     )
-                    ch_scr = alt.layer(line, shade).resolve_scale(color='independent')
-                else:
-                    ch_scr = line
-
-                st.altair_chart(ch_scr, use_container_width=True)
-
-            else:
-                # Fallback: no fixed horizon; draw without bands on timestamp
-                ch_scr = alt.Chart(src).mark_line(point=True).encode(
-                    x=alt.X("timestamp:T", title="Time"),
-                    y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
-                    tooltip=["timestamp:T", "scr_value:Q", "unit:N", "kind:N"]
-                )
-                st.altair_chart(ch_scr, use_container_width=True)
-
-            # st.caption("Table — SCr:")
-            # scr_table = src[["hours", "timestamp", "kind", "scr_value", "unit"]].rename(columns={"scr_value": "value"})
-            # scr_table["hours"] = _hours_to_int(scr_table["hours"])
-            # st.dataframe(scr_table, use_container_width=True)
-
-        else:
-            st.warning("No SCr values for this case.")
-
-        # --------- UO ----------
-        if not uo.empty:
-            uox = uo.rename(columns={"value": "uo_value"})
-            # Prefer hours axis when possible; fall back to actual timestamp
-            if pd.notna(admit_ts) and uox["hours"].notna().any():
-                ch_uo = alt.Chart(uox).mark_line(point=True).encode(
-                    x=alt.X("hours:Q", title=x_title),
-                    y=alt.Y("uo_value:Q", title="Urine Output (mL)"),
-                    tooltip=["timestamp:T", "hours:Q", "uo_value:Q", "unit:N", "kind:N"]
-                )
-            else:
-                ch_uo = alt.Chart(uox).mark_line(point=True).encode(
-                    x=alt.X("timestamp:T", title="Time"),
-                    y=alt.Y("uo_value:Q", title="Urine Output (mL)"),
-                    tooltip=["timestamp:T", "uo_value:Q", "unit:N", "kind:N"]
-                )
-
-            st.markdown("**Urine Output** (It is only available during ICU)")
-            st.altair_chart(ch_uo, use_container_width=True)
-
-            # st.caption("Table — UO (original item names retained in `kind`):")
-            # uo_table = uox[["hours", "timestamp", "kind", "uo_value", "unit"]].rename(columns={"uo_value": "value"})
-            # uo_table["hours"] = _hours_to_int(uo_table["hours"])
-            # st.dataframe(uo_table, use_container_width=True)
-
-        else:
-            st.warning("No UO values for this case.")
-
-
-                # --------- INTAKE / OUTPUT BAR CHART ----------
-                # --------- INTAKE / OUTPUT BAR CHART ----------
-        try:
-            inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
-            if not inout.empty:
-                inout_case = inout[inout["case_id"].astype(str) == case_id].copy()
-                if not inout_case.empty:
-                    st.markdown("**Intake and Output Balance (per time interval)**")
-
-                    # Parse timestamps
-                    inout_case["day_start"] = pd.to_datetime(inout_case["day_start"], errors="coerce")
-                    inout_case["day_end"]   = pd.to_datetime(inout_case["day_end"],   errors="coerce")
-
-                    # Hours since admission (round to nearest integer)
-                    if pd.notna(admit_ts):
-                        inout_case["start_hr"] = (
-                            (inout_case["day_start"] - admit_ts).dt.total_seconds() / 3600
-                        ).round().astype("Int64")
-                        inout_case["end_hr"] = (
-                            (inout_case["day_end"] - admit_ts).dt.total_seconds() / 3600
-                        ).round().astype("Int64")
-                    else:
-                        inout_case["start_hr"] = pd.NA
-                        inout_case["end_hr"]   = pd.NA
-
-                    # Positive intake, negative output
-                    inout_case["intake_ml"] = inout_case["intake_ml"].astype(float).abs()
-                    inout_case["output_ml"] = -inout_case["output_ml"].astype(float).abs()
-
-                    # Interval label like "12–25"
-                    inout_case["interval"] = (
-                        inout_case["start_hr"].astype(str) + "–" + inout_case["end_hr"].astype(str)
-                    )
-
-                    # Long-to-tidy for plotting
-                    df_plot = inout_case.melt(
-                        id_vars=["interval", "start_hr", "end_hr"],
-                        value_vars=["intake_ml", "output_ml"],
-                        var_name="Type", value_name="mL"
-                    ).replace({"Type": {"intake_ml": "Intake (mL)", "output_ml": "Output (mL)"}})
-
-                    import altair as alt
-                    ch_inout = (
-                        alt.Chart(df_plot)
-                        .mark_bar()
-                        .encode(
-                            x=alt.X(
-                                "interval:N",
-                                title="Interval (hours since admission)",
-                                sort=inout_case["interval"].tolist(),
-                                axis=alt.Axis(labelAngle=0)  # rotate ticks
-                            ),
-                            y=alt.Y("mL:Q", title="mL per interval", stack=None),  # allow +/- around zero
-                            color=alt.Color(
-                                "Type:N",
-                                scale=alt.Scale(
-                                    domain=["Intake (mL)", "Output (mL)"],
-                                    range=["#3b82f6", "#f97316"]
-                                ),
-                                legend=alt.Legend(title="Type")
-                            ),
-                            tooltip=[
-                                alt.Tooltip("interval:N", title="Interval (hr)"),
-                                alt.Tooltip("start_hr:Q", title="Start hr"),
-                                alt.Tooltip("end_hr:Q",   title="End hr"),
-                                alt.Tooltip("Type:N"),
-                                alt.Tooltip("mL:Q", title="mL", format=",.0f"),
-                            ],
+                    if not intervals_df.empty:
+                        shade = alt.Chart(intervals_df).mark_rect(opacity=0.25).encode(
+                            x="start:Q", x2="end:Q",
+                            color=alt.Color("label:N", legend=alt.Legend(title="Care setting"),
+                                            scale=alt.Scale(domain=["ED", "ICU"], range=["#fde68a", "#bfdbfe"]))
                         )
-                        .properties(height=320)
-                    )
-
-                    st.altair_chart(ch_inout, use_container_width=True)
-                else:
-                    st.info("No intake/output records for this case.")
-            else:
-                st.warning("Sheet 'inout' is empty.")
-        except Exception as e:
-            st.error(f"Could not load intake/output data: {e}")
-
-
-
-
-                # --------- PROCEDURES TABLE ----------
-                # --------- PROCEDURES TABLE ----------
-        try:
-            proc = _read_ws_df(st.secrets["gsheet_id"], "proc")
-            if not proc.empty:
-                proc_case = proc[proc["case_id"].astype(str) == case_id].copy()
-
-                if not proc_case.empty:
-                    st.markdown("**Procedures**")
-                  
-
-                    # --- Parse chartdate as datetime (midnight assumed) ---
-                    proc_case["chartdate"] = pd.to_datetime(proc_case["chartdate"], errors="coerce")
-
-                    # --- Compute days since admission (fractional, even if hours missing) ---
-                    if pd.notna(admit_ts):
-                        proc_case["days_since_admit"] = (
-                                        np.floor(  # floor to integer days
-                                            (proc_case["chartdate"] - admit_ts).dt.total_seconds() / (24 * 3600)
-                                        )
-                                        .clip(lower=0)  # no negatives allowed
-                                        .astype("Int64")  # keep NA-safe integer dtype
-                                    )
-
-
+                        st.altair_chart(alt.layer(line, shade).resolve_scale(color='independent'), use_container_width=True)
                     else:
-                        proc_case["days_since_admit"] = pd.NA
-
-                    # --- Select & rename columns for display ---
-                    proc_case = proc_case[
-                        ["chartdate", "days_since_admit", "icd_code", "long_title"]
-                    ].rename(
-                        columns={
-                            "chartdate": "Date",
-                            "days_since_admit": "Days After Admission",
-                            "icd_code": "ICD Code",
-                            "long_title": "Procedure Description",
-                        }
-                    )
-
-                    # --- Display sorted table ---
-                    st.dataframe(
-                        proc_case.sort_values("Date"),
+                        st.altair_chart(line, use_container_width=True)
+                else:
+                    st.altair_chart(
+                        alt.Chart(src).mark_line(point=True).encode(
+                            x="timestamp:T", y="scr_value:Q", tooltip=["timestamp:T", "scr_value:Q"]
+                        ),
                         use_container_width=True,
-                        hide_index=True
+                    )
+            else:
+                st.warning("No SCr values for this case.")
+
+        # -------- Tab 2: Urine Output --------
+        with tabs[1]:
+            st.markdown("**Urine Output (mL)** — available during ICU only")
+            if not uo.empty:
+                uox = uo.rename(columns={"value": "uo_value"})
+                if pd.notna(admit_ts) and uox["hours"].notna().any():
+                    ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                        x="hours:Q", y="uo_value:Q", tooltip=["timestamp:T", "hours:Q", "uo_value:Q"]
                     )
                 else:
-                    st.info("No procedures recorded for this case.")
+                    ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                        x="timestamp:T", y="uo_value:Q", tooltip=["timestamp:T", "uo_value:Q"]
+                    )
+                st.altair_chart(ch_uo, use_container_width=True)
             else:
-                st.warning("Procedure sheet ('proc') is empty.")
-        except Exception as e:
-            st.error(f"Could not load procedures: {e}")
+                st.warning("No UO values for this case.")
+
+        # -------- Tab 3: Intake / Output --------
+        with tabs[2]:
+            st.markdown("**Intake and Output Balance (per time interval)**")
+            try:
+                inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
+                if not inout.empty:
+                    inout_case = inout[inout["case_id"].astype(str) == case_id].copy()
+                    if not inout_case.empty:
+                        inout_case["day_start"] = pd.to_datetime(inout_case["day_start"], errors="coerce")
+                        inout_case["day_end"]   = pd.to_datetime(inout_case["day_end"], errors="coerce")
+                        if pd.notna(admit_ts):
+                            inout_case["start_hr"] = ((inout_case["day_start"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
+                            inout_case["end_hr"]   = ((inout_case["day_end"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
+                        inout_case["intake_ml"] = inout_case["intake_ml"].astype(float).abs()
+                        inout_case["output_ml"] = -inout_case["output_ml"].astype(float).abs()
+                        inout_case["interval"] = inout_case["start_hr"].astype(str) + "–" + inout_case["end_hr"].astype(str)
+                        df_plot = inout_case.melt(
+                            id_vars=["interval"], value_vars=["intake_ml", "output_ml"],
+                            var_name="Type", value_name="mL"
+                        ).replace({"Type": {"intake_ml": "Intake (mL)", "output_ml": "Output (mL)"}})
+                        ch_inout = (
+                            alt.Chart(df_plot).mark_bar().encode(
+                                x=alt.X("interval:N", title="Interval (hours since admission)", axis=alt.Axis(labelAngle=45)),
+                                y=alt.Y("mL:Q", title="mL per interval", stack=None),
+                                color=alt.Color("Type:N", scale=alt.Scale(domain=["Intake (mL)", "Output (mL)"],
+                                                                         range=["#3b82f6", "#f97316"])),
+                                tooltip=["interval", "Type", "mL"]
+                            ).properties(height=320)
+                        )
+                        st.altair_chart(ch_inout, use_container_width=True)
+                    else:
+                        st.info("No intake/output records for this case.")
+                else:
+                    st.warning("Sheet 'inout' is empty.")
+            except Exception as e:
+                st.error(f"Could not load intake/output data: {e}")
+
+        # -------- Tab 4: Procedures --------
+        with tabs[3]:
+            st.markdown("**Procedures (ICD-coded)**")
+            try:
+                proc = _read_ws_df(st.secrets["gsheet_id"], "proc")
+                if not proc.empty:
+                    proc_case = proc[proc["case_id"].astype(str) == case_id].copy()
+                    if not proc_case.empty:
+                        proc_case["chartdate"] = pd.to_datetime(proc_case["chartdate"], errors="coerce")
+                        if pd.notna(admit_ts):
+                            proc_case["days_since_admit"] = np.clip(
+                                np.floor((proc_case["chartdate"] - admit_ts).dt.total_seconds()/(24*3600)), 0, None
+                            ).astype("Int64")
+                        proc_case = proc_case[["chartdate", "days_since_admit", "icd_code", "long_title"]].rename(
+                            columns={
+                                "chartdate": "Date",
+                                "days_since_admit": "Days After Admission",
+                                "icd_code": "ICD Code",
+                                "long_title": "Procedure Description",
+                            }
+                        )
+                        st.dataframe(proc_case.sort_values("Date"), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No procedures recorded for this case.")
+                else:
+                    st.warning("Procedure sheet ('proc') is empty.")
+            except Exception as e:
+                st.error(f"Could not load procedures: {e}")
+
+
+        
 
 
 
