@@ -982,7 +982,7 @@ else:
                 key="q2_stage_choice",
             )
             q_stage_expl = st.text_area(
-                "Please explain how you concluded the stage:",
+                "Please explain how you concluded the severity:",
                 key="q2_stage_expl",
                 height=120
             )
