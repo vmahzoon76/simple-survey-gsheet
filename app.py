@@ -839,6 +839,7 @@ with right:
 
 
                 # --------- INTAKE / OUTPUT BAR CHART ----------
+                # --------- INTAKE / OUTPUT BAR CHART ----------
         try:
             inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
             if not inout.empty:
@@ -846,67 +847,77 @@ with right:
                 if not inout_case.empty:
                     st.markdown("**Intake and Output Balance (per time interval)**")
 
-                    # --- Parse datetimes
+                    # Parse timestamps
                     inout_case["day_start"] = pd.to_datetime(inout_case["day_start"], errors="coerce")
-                    inout_case["day_end"] = pd.to_datetime(inout_case["day_end"], errors="coerce")
+                    inout_case["day_end"]   = pd.to_datetime(inout_case["day_end"],   errors="coerce")
 
-                    # --- Compute hours since admission
+                    # Hours since admission (round to nearest integer)
                     if pd.notna(admit_ts):
                         inout_case["start_hr"] = (
                             (inout_case["day_start"] - admit_ts).dt.total_seconds() / 3600
-                        ).round(1)
+                        ).round().astype("Int64")
                         inout_case["end_hr"] = (
                             (inout_case["day_end"] - admit_ts).dt.total_seconds() / 3600
-                        ).round(1)
+                        ).round().astype("Int64")
                     else:
                         inout_case["start_hr"] = pd.NA
-                        inout_case["end_hr"] = pd.NA
+                        inout_case["end_hr"]   = pd.NA
 
-                    # --- Label for x-axis
+                    # Positive intake, negative output
+                    inout_case["intake_ml"] = inout_case["intake_ml"].astype(float).abs()
+                    inout_case["output_ml"] = -inout_case["output_ml"].astype(float).abs()
+
+                    # Interval label like "12–25"
                     inout_case["interval"] = (
                         inout_case["start_hr"].astype(str) + "–" + inout_case["end_hr"].astype(str)
                     )
 
-                    # --- Melt for stacked plotting
+                    # Long-to-tidy for plotting
                     df_plot = inout_case.melt(
-                        id_vars=["interval"],
+                        id_vars=["interval", "start_hr", "end_hr"],
                         value_vars=["intake_ml", "output_ml"],
-                        var_name="Type",
-                        value_name="mL"
-                    )
-
-                    # --- Rename for nicer legend
-                    df_plot["Type"] = df_plot["Type"].map({
-                        "intake_ml": "Intake (mL)",
-                        "output_ml": "Output (mL)"
-                    })
+                        var_name="Type", value_name="mL"
+                    ).replace({"Type": {"intake_ml": "Intake (mL)", "output_ml": "Output (mL)"}})
 
                     import altair as alt
                     ch_inout = (
                         alt.Chart(df_plot)
                         .mark_bar()
                         .encode(
-                            x=alt.X("interval:N", title="Interval (hours since admission)",
-                                    sort=inout_case["interval"].tolist()),
-                            y=alt.Y("mL:Q", title="mL per interval"),
-                            color=alt.Color("Type:N",
-                                            scale=alt.Scale(
-                                                domain=["Intake (mL)", "Output (mL)"],
-                                                range=["#3b82f6", "#f97316"]),
-                                            legend=alt.Legend(title="Type")),
-                            tooltip=["interval", "Type", "mL"]
+                            x=alt.X(
+                                "interval:N",
+                                title="Interval (hours since admission)",
+                                sort=inout_case["interval"].tolist(),
+                                axis=alt.Axis(labelAngle=45)  # rotate ticks
+                            ),
+                            y=alt.Y("mL:Q", title="mL per interval", stack=None),  # allow +/- around zero
+                            color=alt.Color(
+                                "Type:N",
+                                scale=alt.Scale(
+                                    domain=["Intake (mL)", "Output (mL)"],
+                                    range=["#3b82f6", "#f97316"]
+                                ),
+                                legend=alt.Legend(title="Type")
+                            ),
+                            tooltip=[
+                                alt.Tooltip("interval:N", title="Interval (hr)"),
+                                alt.Tooltip("start_hr:Q", title="Start hr"),
+                                alt.Tooltip("end_hr:Q",   title="End hr"),
+                                alt.Tooltip("Type:N"),
+                                alt.Tooltip("mL:Q", title="mL", format=",.0f"),
+                            ],
                         )
-                        .properties(height=300)
+                        .properties(height=320)
                     )
 
                     st.altair_chart(ch_inout, use_container_width=True)
-
                 else:
                     st.info("No intake/output records for this case.")
             else:
                 st.warning("Sheet 'inout' is empty.")
         except Exception as e:
             st.error(f"Could not load intake/output data: {e}")
+
 
 
 
