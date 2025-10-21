@@ -839,6 +839,7 @@ with right:
 
 
                 # --------- PROCEDURES TABLE ----------
+                # --------- PROCEDURES TABLE ----------
         try:
             proc = _read_ws_df(st.secrets["gsheet_id"], "proc")
             if not proc.empty:
@@ -846,14 +847,34 @@ with right:
 
                 if not proc_case.empty:
                     st.markdown("**Procedures for this admission (from procedure codes)**")
-                    proc_case = proc_case[["chartdate", "icd_code", "icd_version", "long_title"]].rename(
+                    st.caption("Note: Procedure dates are stored without hour information; "
+                               "day differences are approximate relative to admission time.")
+
+                    # --- Parse chartdate as datetime (midnight assumed) ---
+                    proc_case["chartdate"] = pd.to_datetime(proc_case["chartdate"], errors="coerce")
+
+                    # --- Compute days since admission (fractional, even if hours missing) ---
+                    if pd.notna(admit_ts):
+                        proc_case["days_since_admit"] = (
+                            (proc_case["chartdate"] - admit_ts).dt.total_seconds() / (24 * 3600)
+                        ).round(1)
+                    else:
+                        proc_case["days_since_admit"] = pd.NA
+
+                    # --- Select & rename columns for display ---
+                    proc_case = proc_case[
+                        ["chartdate", "days_since_admit", "icd_code", "icd_version", "long_title"]
+                    ].rename(
                         columns={
                             "chartdate": "Date",
+                            "days_since_admit": "Days After Admission (approx.)",
                             "icd_code": "ICD Code",
                             "icd_version": "Version",
                             "long_title": "Procedure Description",
                         }
                     )
+
+                    # --- Display sorted table ---
                     st.dataframe(
                         proc_case.sort_values("Date"),
                         use_container_width=True,
@@ -865,6 +886,7 @@ with right:
                 st.warning("Procedure sheet ('proc') is empty.")
         except Exception as e:
             st.error(f"Could not load procedures: {e}")
+
 
 
 
