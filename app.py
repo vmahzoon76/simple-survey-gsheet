@@ -864,14 +864,13 @@ with right:
 
                     # --- Select & rename columns for display ---
                     proc_case = proc_case[
-                        ["chartdate", "days_since_admit", "icd_code", "icd_version", "long_title"]
+                        ["chartdate", "days_since_admit", "icd_code", "long_title"]
                     ].rename(
                         columns={
                             "chartdate": "Date",
                             "days_since_admit": "Days After Admission",
                             "icd_code": "ICD Code",
-                            "icd_version": "Version",
-                            "long_title": "Procedure Description",
+                            "Description": "Procedure Description",
                         }
                     )
 
