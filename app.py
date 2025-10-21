@@ -838,6 +838,78 @@ with right:
             st.warning("No UO values for this case.")
 
 
+                # --------- INTAKE / OUTPUT BAR CHART ----------
+        try:
+            inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
+            if not inout.empty:
+                inout_case = inout[inout["case_id"].astype(str) == case_id].copy()
+                if not inout_case.empty:
+                    st.markdown("**Intake and Output Balance (per time interval)**")
+
+                    # --- Parse datetimes
+                    inout_case["day_start"] = pd.to_datetime(inout_case["day_start"], errors="coerce")
+                    inout_case["day_end"] = pd.to_datetime(inout_case["day_end"], errors="coerce")
+
+                    # --- Compute hours since admission
+                    if pd.notna(admit_ts):
+                        inout_case["start_hr"] = (
+                            (inout_case["day_start"] - admit_ts).dt.total_seconds() / 3600
+                        ).round(1)
+                        inout_case["end_hr"] = (
+                            (inout_case["day_end"] - admit_ts).dt.total_seconds() / 3600
+                        ).round(1)
+                    else:
+                        inout_case["start_hr"] = pd.NA
+                        inout_case["end_hr"] = pd.NA
+
+                    # --- Label for x-axis
+                    inout_case["interval"] = (
+                        inout_case["start_hr"].astype(str) + "–" + inout_case["end_hr"].astype(str)
+                    )
+
+                    # --- Melt for stacked plotting
+                    df_plot = inout_case.melt(
+                        id_vars=["interval"],
+                        value_vars=["intake_ml", "output_ml"],
+                        var_name="Type",
+                        value_name="mL"
+                    )
+
+                    # --- Rename for nicer legend
+                    df_plot["Type"] = df_plot["Type"].map({
+                        "intake_ml": "Intake (mL)",
+                        "output_ml": "Output (mL)"
+                    })
+
+                    import altair as alt
+                    ch_inout = (
+                        alt.Chart(df_plot)
+                        .mark_bar()
+                        .encode(
+                            x=alt.X("interval:N", title="Interval (hours since admission)",
+                                    sort=inout_case["interval"].tolist()),
+                            y=alt.Y("mL:Q", title="mL per interval"),
+                            color=alt.Color("Type:N",
+                                            scale=alt.Scale(
+                                                domain=["Intake (mL)", "Output (mL)"],
+                                                range=["#3b82f6", "#f97316"]),
+                                            legend=alt.Legend(title="Type")),
+                            tooltip=["interval", "Type", "mL"]
+                        )
+                        .properties(height=300)
+                    )
+
+                    st.altair_chart(ch_inout, use_container_width=True)
+
+                else:
+                    st.info("No intake/output records for this case.")
+            else:
+                st.warning("Sheet 'inout' is empty.")
+        except Exception as e:
+            st.error(f"Could not load intake/output data: {e}")
+
+
+
                 # --------- PROCEDURES TABLE ----------
                 # --------- PROCEDURES TABLE ----------
         try:
