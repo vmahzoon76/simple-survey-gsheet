@@ -925,9 +925,7 @@ else:
     st.markdown(
         """
         **Before you begin:**  
-        Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/EQnr80BiXJ5HjRu58bAOCBkBTGRBPraOny7S16-gnnLyWQ?e=uBd3Nk)  
-        for the definitions of AKI and its subtypes (pre-renal, intrinsic, and post-renal).  
-        Use that shared definition when answering the following questions.
+        Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/EQnr80BiXJ5HjRu58bAOCBkBTGRBPraOny7S16-gnnLyWQ?e=uBd3Nk) for the definitions of AKI.  Use that shared definition when answering the following questions.
         """
     )
     with st.form("step2_form", clear_on_submit=False):
