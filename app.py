@@ -960,7 +960,7 @@ else:
             st.markdown("**If you believe this patient had AKI, please answer the following questions:**")
 
             # --- Etiology: radio then explain ---
-            etiology_options = ["Pre-renal", "Intrinsic", "Post-renal", "Obstruction", "Multi-factorial"]
+            etiology_options = ["Pre-renal", "Intrinsic (ATN)", "Intrinsic (Other)", "Post-renal(Obstruction)", "Multi-factorial"]
             q_etiology_choice = st.radio(
                 "AKI etiology — What was the reason behind AKI?",
                 options=etiology_options,
