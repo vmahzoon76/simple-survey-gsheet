@@ -826,7 +826,7 @@ with right:
                     tooltip=["timestamp:T", "uo_value:Q", "unit:N", "kind:N"]
                 )
 
-            st.markdown("**Urine Output**")
+            st.markdown("**Urine Output** (It is only available during ICU)")
             st.altair_chart(ch_uo, use_container_width=True)
 
             # st.caption("Table — UO (original item names retained in `kind`):")
