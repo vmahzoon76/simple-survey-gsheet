@@ -855,9 +855,9 @@ with right:
 
                     # --- Compute days since admission (fractional, even if hours missing) ---
                     if pd.notna(admit_ts):
-                        proc_case["days_since_admit"] = (
+                        proc_case["days_since_admit"] = int(
                             (proc_case["chartdate"] - admit_ts).dt.total_seconds() / (24 * 3600)
-                        ).round(1)
+                        )
                     else:
                         proc_case["days_since_admit"] = pd.NA
 
@@ -867,7 +867,7 @@ with right:
                     ].rename(
                         columns={
                             "chartdate": "Date",
-                            "days_since_admit": "Days After Admission (approx.)",
+                            "days_since_admit": "Days After Admission",
                             "icd_code": "ICD Code",
                             "icd_version": "Version",
                             "long_title": "Procedure Description",
