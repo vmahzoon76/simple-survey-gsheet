@@ -888,7 +888,7 @@ with right:
                                 "interval:N",
                                 title="Interval (hours since admission)",
                                 sort=inout_case["interval"].tolist(),
-                                axis=alt.Axis(labelAngle=90)  # rotate ticks
+                                axis=alt.Axis(labelAngle=0)  # rotate ticks
                             ),
                             y=alt.Y("mL:Q", title="mL per interval", stack=None),  # allow +/- around zero
                             color=alt.Color(
