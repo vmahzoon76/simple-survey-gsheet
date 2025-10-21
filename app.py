@@ -922,9 +922,7 @@ else:
         st.query_params.pop(f"hl_step1_{case_id}", None)
     except Exception:
         pass
-
-    with st.form("step2_form", clear_on_submit=False):
-        st.markdown(
+    st.markdown(
         """
         **Before you begin:**  
         Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/EQnr80BiXJ5HjRu58bAOCBkBTGRBPraOny7S16-gnnLyWQ?e=uBd3Nk)  
@@ -932,6 +930,8 @@ else:
         Use that shared definition when answering the following questions.
         """
     )
+    with st.form("step2_form", clear_on_submit=False):
+        
         q_aki2 = st.radio(
             "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
             ["Yes", "No"], horizontal=True, key="q2_aki"
