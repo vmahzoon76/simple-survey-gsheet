@@ -924,7 +924,7 @@ else:
         pass
 
     with st.form("step2_form", clear_on_submit=False):
-         st.markdown(
+        st.markdown(
         """
         **Before you begin:**  
         Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/EQnr80BiXJ5HjRu58bAOCBkBTGRBPraOny7S16-gnnLyWQ?e=uBd3Nk)  
