@@ -974,9 +974,9 @@ else:
             )
 
             # --- Stage: radio then explain ---
-            stage_options = ["Stage 1", "Stage 2", "Stage 3", "Unclear"]
+            stage_options = ["Mild", "Moderate", "Severe"]
             q_stage_choice = st.radio(
-                "AKI stage — What stage of AKI do you believe the patient reached?:",
+                "AKI Severity - How severe do you think the AKI episode was?",
                 options=stage_options,
                 horizontal=True,
                 key="q2_stage_choice",
