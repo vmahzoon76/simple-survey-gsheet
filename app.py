@@ -856,8 +856,9 @@ with right:
                     # --- Compute days since admission (fractional, even if hours missing) ---
                     if pd.notna(admit_ts):
                         proc_case["days_since_admit"] = (
-                            (proc_case["chartdate"] - admit_ts).dt.total_seconds() / (24 * 3600)
-                        ).astype("Int64")
+                                                    (proc_case["chartdate"] - admit_ts).dt.total_seconds() // (24 * 3600)
+                                                ).astype("Int64")  # Pandas nullable int type
+
                     else:
                         proc_case["days_since_admit"] = pd.NA
 
