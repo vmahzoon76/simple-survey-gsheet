@@ -870,7 +870,7 @@ with right:
                             "chartdate": "Date",
                             "days_since_admit": "Days After Admission",
                             "icd_code": "ICD Code",
-                            "Description": "Procedure Description",
+                            "long_title": "Procedure Description",
                         }
                     )
 
