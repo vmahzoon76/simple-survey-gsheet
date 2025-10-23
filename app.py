@@ -26,13 +26,13 @@ st.set_page_config(page_title="AKI Expert Review", layout="wide")
 st.title("AKI Expert Review")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
-
-st.markdown(
-    """
-    ##  Instruction
-    **Before starting: Please review the [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/ETBC7JRhTf5LpN3JaySbyzEBEwHTP3ihMnpl4fYDM740HQ?e=NC7uxc) to get familiar with the protocols for this study.**
-    """
-)
+if not st.session_state.get("entered", False):
+    st.markdown(
+        """
+        ##  Instruction
+        **Before starting: Please review the [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/ETBC7JRhTf5LpN3JaySbyzEBEwHTP3ihMnpl4fYDM740HQ?e=NC7uxc) to get familiar with the protocols for this study.**
+        """
+    )
 
 # -------------------- Helpers --------------------
 import re
