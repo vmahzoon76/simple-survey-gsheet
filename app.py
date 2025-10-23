@@ -882,16 +882,26 @@ with right:
 
         # -------- Show PT text box --------
         if PT.strip():
-            st.markdown("**Pertinent Results / Additional Text**")
-            st.markdown(
+            st.markdown("**Pertinent Results**")
+            st.components.v1.html(
                 f"""
-                <div style="border:1px solid #bbb; border-radius:10px; padding:14px; 
-                            background-color:#f9f9f9; white-space:pre-wrap;">
-                    {PT}
+                <div style="
+                    border:1px solid #bbb;
+                    border-radius:10px;
+                    padding:14px;
+                    white-space:pre-wrap;
+                    overflow-y:auto;
+                    max-height:175px;   /* about 1/4 of DS height */
+                    background-color:white;
+                    font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+                    line-height:1.55;
+                ">
+                    {PT.replace("**", "<strong>").replace("**", "</strong>", 1)}
                 </div>
                 """,
-                unsafe_allow_html=True
+                height=200   # extra space for scroll and padding
             )
+
 
         
 
