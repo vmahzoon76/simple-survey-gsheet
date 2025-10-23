@@ -908,7 +908,7 @@ with right:
                     padding:14px;
                     white-space:pre-wrap;
                     overflow-y:auto;
-                    max-height:400px;   /* adjustable */
+                    max-height:300px;   /* adjustable */
                     background-color:white;
                     font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
                     line-height:1.55;
@@ -916,7 +916,7 @@ with right:
                     {_boldify_simple(pt_clean)}
                 </div>
                 """,
-                height=420
+                height=300
             )
 
 
