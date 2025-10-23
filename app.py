@@ -907,7 +907,7 @@ with right:
                     {_boldify_simple(PT)}
                 </div>
                 """,
-                height=200
+                height=300
             )
 
 
