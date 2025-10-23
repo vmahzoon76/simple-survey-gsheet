@@ -30,7 +30,7 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 st.markdown(
     """
     ##  Instruction
-    **Before starting: Please review the [slides here](https://your-link-to-slides) to get familiar with the protocols for this study.**
+    **Before starting: Please review the [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/ETBC7JRhTf5LpN3JaySbyzEBEwHTP3ihMnpl4fYDM740HQ?e=NC7uxc) to get familiar with the protocols for this study.**
     """
 )
 
