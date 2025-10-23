@@ -905,7 +905,7 @@ with right:
                 <div style="
                     border:1px solid #bbb;
                     border-radius:10px;
-                    padding:14px 14px 14px 4px;
+                    padding:14px;
                     white-space:pre-wrap;
                     overflow-y:auto;
                     max-height:400px;   /* adjustable */
