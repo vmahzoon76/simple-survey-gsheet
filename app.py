@@ -916,7 +916,7 @@ with right:
                     {_boldify_simple(pt_clean)}
                 </div>
                 """,
-                height=300
+                height=350
             )
 
 
