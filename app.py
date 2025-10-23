@@ -880,6 +880,18 @@ with right:
             except Exception as e:
                 st.error(f"Could not load procedures: {e}")
 
+        # -------- Show PT text box --------
+        if PT.strip():
+            st.markdown("**Pertinent Results / Additional Text**")
+            st.markdown(
+                f"""
+                <div style="border:1px solid #bbb; border-radius:10px; padding:14px; 
+                            background-color:#f9f9f9; white-space:pre-wrap;">
+                    {PT}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
         
 
