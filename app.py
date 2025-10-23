@@ -575,7 +575,7 @@ except Exception:
 
 # ================== Worksheets (create if missing) ==================
 adm_headers = [
-    "case_id", "title", "hadm_id", "DS_step1", "DS_step2", "weight",
+    "case_id", "title", "hadm_id", "PT", "DS", "weight",
     "age", "gender",   # <-- add these two
     "admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"
 ]
@@ -687,8 +687,8 @@ if st.session_state.case_idx >= len(admissions):
 case = admissions.iloc[st.session_state.case_idx]
 case_id   = str(case.get("case_id", ""))
 title     = str(case.get("title", ""))
-summary1  = str(case.get("DS_step1", ""))   # Step 1 text
-summary2  = str(case.get("DS_step2", ""))   # Step 2 text
+summary  = str(case.get("DS", ""))   # Step 1 text
+PT  = str(case.get("PT", ""))   # Step 2 text
 weight    = case.get("weight", "")
 admit_ts  = case.get("admittime")           # pandas.Timestamp or NaT
 # Additional timestamps for shading/axis
@@ -735,9 +735,9 @@ left, right = st.columns([5, 4], gap="large")
 with left:
     st.markdown("**Discharge Summary (highlight directly in the text below)**")
     if st.session_state.step == 1:
-        inline_highlighter(summary2, case_id=case_id, step_key="step1", height=700)
+        inline_highlighter(summary, case_id=case_id, step_key="step1", height=700)
     else:
-        inline_highlighter(summary1, case_id=case_id, step_key="step2", height=700)
+        inline_highlighter(summary, case_id=case_id, step_key="step2", height=700)
 
 
 
