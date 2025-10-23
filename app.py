@@ -27,6 +27,13 @@ st.title("AKI Expert Review")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
+st.markdown(
+    """
+    **Before starting:**  
+    Please review the [slides here](https://your-link-to-slides) to get familiar with the protocols for this study.
+    """
+)
+
 # -------------------- Helpers --------------------
 import re
 
