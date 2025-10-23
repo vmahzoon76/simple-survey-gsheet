@@ -37,6 +37,14 @@ if not st.session_state.get("entered", False):
 # -------------------- Helpers --------------------
 import re
 
+def _boldify_simple(text: str) -> str:
+    """Convert **...** to <strong>...</strong> without breaking other text."""
+    if not isinstance(text, str):
+        return ""
+    text = text.replace("\r\n", "\n")  # normalize line breaks
+    return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+
+
 def _fmt_gender(g):
     g = str(g).strip().upper()
     return {"F": "Female", "M": "Male"}.get(g, "")
@@ -891,16 +899,17 @@ with right:
                     padding:14px;
                     white-space:pre-wrap;
                     overflow-y:auto;
-                    max-height:175px;   /* about 1/4 of DS height */
+                    max-height:175px;   /* ~1/4 of DS height */
                     background-color:white;
                     font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
                     line-height:1.55;
                 ">
-                    {PT.replace("**", "<strong>").replace("**", "</strong>", 1)}
+                    {_boldify_simple(PT)}
                 </div>
                 """,
-                height=200   # extra space for scroll and padding
+                height=300
             )
+
 
 
         
