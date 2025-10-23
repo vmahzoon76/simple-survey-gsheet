@@ -45,6 +45,14 @@ def _boldify_simple(text: str) -> str:
     return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
 
 
+def _clean_pt(text: str) -> str:
+    if not isinstance(text, str):
+        return ""
+    # Remove leading **PERTINENT RESULTS:** (case-insensitive)
+    text = re.sub(r'^\*\*PERTINENT RESULTS:\*\*\s*', '', text.strip(), flags=re.IGNORECASE)
+    return text.strip()
+
+
 def _fmt_gender(g):
     g = str(g).strip().upper()
     return {"F": "Female", "M": "Male"}.get(g, "")
@@ -890,6 +898,7 @@ with right:
 
         # -------- Show PT text box --------
         if PT.strip():
+            pt_clean = _clean_pt(PT)
             st.markdown("**Pertinent Results**")
             st.components.v1.html(
                 f"""
@@ -899,16 +908,17 @@ with right:
                     padding:14px;
                     white-space:pre-wrap;
                     overflow-y:auto;
-                    max-height:225px;   /* ~1/4 of DS height */
+                    max-height:400px;   /* adjustable */
                     background-color:white;
                     font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
                     line-height:1.55;
                 ">
-                    {_boldify_simple(PT)}
+                    {_boldify_simple(pt_clean)}
                 </div>
                 """,
-                height=300
+                height=420
             )
+
 
 
 
