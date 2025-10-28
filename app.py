@@ -830,7 +830,7 @@ with right:
             else:
                 st.warning("No UO values for this case.")
 
-        -------- Tab 3: Intake / Output --------
+        #-------- Tab 3: Intake / Output --------
         with tabs[1]:
             st.markdown("**Intake and Output Balance (per time interval)**")
             try:
