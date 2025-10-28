@@ -770,8 +770,8 @@ with right:
         # --- Tabs for four visualizations ---
         tabs = st.tabs([
             "Serum Creatinine (SCr)",
-            # "Urine Output (UO)",
-            # "Intake / Output",
+            "Urine Output (UO)",
+            "Intake / Output",
             "Procedures"
         ])
 
@@ -831,7 +831,7 @@ with right:
                 st.warning("No UO values for this case.")
 
         #-------- Tab 3: Intake / Output --------
-        with tabs[1]:
+        with tabs[2]:
             st.markdown("**Intake and Output Balance (per time interval)**")
             try:
                 inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
