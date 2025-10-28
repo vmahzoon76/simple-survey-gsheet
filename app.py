@@ -813,62 +813,62 @@ with right:
             else:
                 st.warning("No SCr values for this case.")
 
-        # # -------- Tab 2: Urine Output --------
-        # with tabs[1]:
-        #     st.markdown("**Urine Output (mL)** — available during ICU only")
-        #     if not uo.empty:
-        #         uox = uo.rename(columns={"value": "uo_value"})
-        #         if pd.notna(admit_ts) and uox["hours"].notna().any():
-        #             ch_uo = alt.Chart(uox).mark_line(point=True).encode(
-        #                 x="hours:Q", y="uo_value:Q", tooltip=["timestamp:T", "hours:Q", "uo_value:Q"]
-        #             )
-        #         else:
-        #             ch_uo = alt.Chart(uox).mark_line(point=True).encode(
-        #                 x="timestamp:T", y="uo_value:Q", tooltip=["timestamp:T", "uo_value:Q"]
-        #             )
-        #         st.altair_chart(ch_uo, use_container_width=True)
-        #     else:
-        #         st.warning("No UO values for this case.")
+        # -------- Tab 2: Urine Output --------
+        with tabs[1]:
+            st.markdown("**Urine Output (mL)** — available during ICU only")
+            if not uo.empty:
+                uox = uo.rename(columns={"value": "uo_value"})
+                if pd.notna(admit_ts) and uox["hours"].notna().any():
+                    ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                        x="hours:Q", y="uo_value:Q", tooltip=["timestamp:T", "hours:Q", "uo_value:Q"]
+                    )
+                else:
+                    ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                        x="timestamp:T", y="uo_value:Q", tooltip=["timestamp:T", "uo_value:Q"]
+                    )
+                st.altair_chart(ch_uo, use_container_width=True)
+            else:
+                st.warning("No UO values for this case.")
 
-        # -------- Tab 3: Intake / Output --------
-        # with tabs[1]:
-        #     st.markdown("**Intake and Output Balance (per time interval)**")
-        #     try:
-        #         inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
-        #         if not inout.empty:
-        #             inout_case = inout[inout["case_id"].astype(str) == case_id].copy()
-        #             if not inout_case.empty:
-        #                 inout_case["day_start"] = pd.to_datetime(inout_case["day_start"], errors="coerce")
-        #                 inout_case["day_end"]   = pd.to_datetime(inout_case["day_end"], errors="coerce")
-        #                 if pd.notna(admit_ts):
-        #                     inout_case["start_hr"] = ((inout_case["day_start"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
-        #                     inout_case["end_hr"]   = ((inout_case["day_end"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
-        #                 inout_case["intake_ml"] = inout_case["intake_ml"].astype(float).abs()
-        #                 inout_case["output_ml"] = -inout_case["output_ml"].astype(float).abs()
-        #                 inout_case["interval"] = inout_case["start_hr"].astype(str) + "–" + inout_case["end_hr"].astype(str)
-        #                 df_plot = inout_case.melt(
-        #                     id_vars=["interval"], value_vars=["intake_ml", "output_ml"],
-        #                     var_name="Type", value_name="mL"
-        #                 ).replace({"Type": {"intake_ml": "Intake (mL)", "output_ml": "Output (mL)"}})
-        #                 ch_inout = (
-        #                     alt.Chart(df_plot).mark_bar().encode(
-        #                         x=alt.X("interval:N", title="Interval (hours since admission)", axis=alt.Axis(labelAngle=45)),
-        #                         y=alt.Y("mL:Q", title="mL per interval", stack=None),
-        #                         color=alt.Color("Type:N", scale=alt.Scale(domain=["Intake (mL)", "Output (mL)"],
-        #                                                                  range=["#3b82f6", "#f97316"])),
-        #                         tooltip=["interval", "Type", "mL"]
-        #                     ).properties(height=320)
-        #                 )
-        #                 st.altair_chart(ch_inout, use_container_width=True)
-        #             else:
-        #                 st.info("No intake/output records for this case.")
-        #         else:
-        #             st.warning("Sheet 'inout' is empty.")
-        #     except Exception as e:
-        #         st.error(f"Could not load intake/output data: {e}")
+        -------- Tab 3: Intake / Output --------
+        with tabs[1]:
+            st.markdown("**Intake and Output Balance (per time interval)**")
+            try:
+                inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
+                if not inout.empty:
+                    inout_case = inout[inout["case_id"].astype(str) == case_id].copy()
+                    if not inout_case.empty:
+                        inout_case["day_start"] = pd.to_datetime(inout_case["day_start"], errors="coerce")
+                        inout_case["day_end"]   = pd.to_datetime(inout_case["day_end"], errors="coerce")
+                        if pd.notna(admit_ts):
+                            inout_case["start_hr"] = ((inout_case["day_start"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
+                            inout_case["end_hr"]   = ((inout_case["day_end"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
+                        inout_case["intake_ml"] = inout_case["intake_ml"].astype(float).abs()
+                        inout_case["output_ml"] = -inout_case["output_ml"].astype(float).abs()
+                        inout_case["interval"] = inout_case["start_hr"].astype(str) + "–" + inout_case["end_hr"].astype(str)
+                        df_plot = inout_case.melt(
+                            id_vars=["interval"], value_vars=["intake_ml", "output_ml"],
+                            var_name="Type", value_name="mL"
+                        ).replace({"Type": {"intake_ml": "Intake (mL)", "output_ml": "Output (mL)"}})
+                        ch_inout = (
+                            alt.Chart(df_plot).mark_bar().encode(
+                                x=alt.X("interval:N", title="Interval (hours since admission)", axis=alt.Axis(labelAngle=45)),
+                                y=alt.Y("mL:Q", title="mL per interval", stack=None),
+                                color=alt.Color("Type:N", scale=alt.Scale(domain=["Intake (mL)", "Output (mL)"],
+                                                                         range=["#3b82f6", "#f97316"])),
+                                tooltip=["interval", "Type", "mL"]
+                            ).properties(height=320)
+                        )
+                        st.altair_chart(ch_inout, use_container_width=True)
+                    else:
+                        st.info("No intake/output records for this case.")
+                else:
+                    st.warning("Sheet 'inout' is empty.")
+            except Exception as e:
+                st.error(f"Could not load intake/output data: {e}")
 
         # -------- Tab 4: Procedures --------
-        with tabs[1]:
+        with tabs[3]:
             st.markdown("**Procedures (ICD-coded)**")
             try:
                 proc = _read_ws_df(st.secrets["gsheet_id"], "proc")
