@@ -757,22 +757,22 @@ if st.session_state.step == 1:
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
-            ["Yes", "No"], horizontal=True, key="q1_aki"
+            ["Yes", "No"], horizontal=True, key=f"q1_aki_{case_id}"
         )
-
-        # Bring back rationale
+        
         q_rationale = st.text_area(
             "Please provide a brief rationale for your assessment. Please also highlight in the note any specific text that impacted your conclusion.",
-            height=140, key="q1_rationale"
+            height=140, key=f"q1_rationale_{case_id}"
         )
-
+        
         q_conf = st.radio(
             "Confidence (choose 1–5)",
             options=[1, 2, 3, 4, 5],
             index=2,  # default = 3
             horizontal=True,
-            key="q1_conf",
+            key=f"q1_conf_{case_id}",
         )
+
 
 
 
