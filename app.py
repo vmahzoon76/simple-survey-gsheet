@@ -291,7 +291,7 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
             btns.forEach(b => {{
               if (b.__hl_hooked__) return;
               const t = (b.textContent||'');
-              if (t.includes('Save Step 1') || t.includes('Save Step 2')) {{
+              if (t.includes('Save') || t.includes('Save Step 2')) {{
                 b.__hl_hooked__ = true;
                 b.addEventListener('click', () => syncToUrl(), {{capture:true}});
               }}
