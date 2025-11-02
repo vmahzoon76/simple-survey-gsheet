@@ -596,7 +596,7 @@ adm_headers = [
     "admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"
 ]
 
-labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
+
 resp_headers = [
     "timestamp_et", "reviewer_id", "case_id", "step",
     "aki",                     # "Yes"/"No"
@@ -628,7 +628,7 @@ for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtim
     if _c in admissions.columns:
         admissions[_c] = pd.to_datetime(admissions[_c], errors="coerce")
 
-labs["timestamp"] = pd.to_datetime(labs["timestamp"], errors="coerce")
+
 
 
 
@@ -721,23 +721,7 @@ st.caption(
 )
 st.markdown(f"### {case_id} — {title}")
 
-# Filter labs for this case
-case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
 
-# timestamp should already be datetime, but this is harmless if it is
-case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
-
-# Compute hours since admission (will be NaN if admittime is missing)
-if pd.notna(admit_ts):
-    case_labs["hours"] = (case_labs["timestamp"] - admit_ts).dt.total_seconds() / 3600.0
-else:
-    case_labs["hours"] = pd.NA
-
-# Normalize kind for filtering, retain original for display
-case_labs["_kind_lower"] = case_labs["kind"].astype(str).str.lower()
-
-scr = case_labs[case_labs["_kind_lower"] == "scr"].sort_values("timestamp").copy()
-uo  = case_labs[case_labs["_kind_lower"] != "scr"].sort_values("timestamp").copy()
 
 
 
