@@ -584,7 +584,6 @@ except RuntimeError as e:
 # Debug info (optional)
 try:
     st.caption(f"Connected to Google Sheet: **{sh.title}**")
-    st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
 except Exception:
     # non-fatal debug failure
     pass
@@ -717,7 +716,6 @@ gender    = case.get("gender", "")          # <-- new
 st.caption(
     f"Reviewer: **{st.session_state.reviewer_id}** • "
     f"Admission {st.session_state.case_idx + 1}/{len(admissions)} • "
-    f"Step {st.session_state.step}/2"
 )
 st.markdown(f"### {case_id} — {title}")
 
