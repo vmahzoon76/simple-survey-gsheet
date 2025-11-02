@@ -30,7 +30,7 @@ if not st.session_state.get("entered", False):
     st.markdown(
         """
         ##  Instruction
-        **Before starting: Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/EQnr80BiXJ5HjRu58bAOCBkBTGRBPraOny7S16-gnnLyWQ?e=uBd3Nk) for the definitions of AKI**
+        **Before starting: Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/ETBC7JRhTf5LpN3JaySbyzEBEwHTP3ihMnpl4fYDM740HQ?e=hI4ZVi) for the protocol of this study.**
         """
     )
 
