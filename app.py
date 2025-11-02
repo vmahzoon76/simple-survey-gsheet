@@ -811,10 +811,18 @@ if st.session_state.step == 1:
                 st.query_params.clear()
 
             st.success("Saved.")
+
+            # Reset form values so next case starts clean
+            for key in ["q1_aki", "q1_rationale", "q1_conf"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            
+            # Advance to next admission
+            st.session_state.case_idx += 1
             st.session_state.step = 1
-            st.session_state.case_idx += 1  # move to next admission
             st.session_state.jump_to_top = True
             _scroll_top(); time.sleep(0.25); _rerun()
+
 
         finally:
             st.session_state.saving1 = False
