@@ -935,7 +935,7 @@ if st.session_state.step == 1:
 
 
 
-        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
+        submitted1 = st.form_submit_button("Save ✅", disabled=st.session_state.get("saving1", False))
 
     if submitted1:
         try:
