@@ -811,9 +811,11 @@ if st.session_state.step == 1:
                 st.query_params.clear()
 
             st.success("Saved.")
-            st.session_state.step = 2
+            st.session_state.step = 1
+            st.session_state.case_idx += 1  # move to next admission
             st.session_state.jump_to_top = True
             _scroll_top(); time.sleep(0.25); _rerun()
+
         finally:
             st.session_state.saving1 = False
 
