@@ -656,9 +656,9 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
             resp["step"] = []
 
         # Sets of finished/started cases
-        completed_ids = set(resp.loc[resp["step"] == 2, "case_id"].astype(str)) if not resp.empty else set()
-        step1_only_ids = set \
-            (resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
+        # Every saved Step 1 now counts as completed
+        completed_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) if not resp.empty else set()
+
 
         # Find first admission not fully completed
         target_idx = None
