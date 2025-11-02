@@ -738,7 +738,7 @@ with left:
 
 with right:
     if st.session_state.step == 1:
-        st.info("Step 1: Narrative only. Do not use structured data.")
+        st.info("Narrative only")
     
 
         
@@ -750,7 +750,7 @@ st.markdown("---")
 
 # ================== Questions & Saving ==================
 if st.session_state.step == 1:
-    st.subheader("Step 1 — Questions")
+    st.subheader("Questions")
 
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
