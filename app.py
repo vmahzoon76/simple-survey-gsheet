@@ -29,35 +29,10 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 if not st.session_state.get("entered", False):
     st.markdown(
         """
-        ## Annotation Task: What Did the Note Writer Believe About AKI?
-
-        ### Goal
-        Decide **what the discharge summary’s author believed** about acute kidney injury (AKI) **during the hospital stay — not your own clinical opinion.**
-
-        ### What You’ll Do
-        For each discharge summary, answer four questions:
-        1. Did the writer think the patient had AKI? → **Yes / No**
-        2. How certain are you? → **Very / Somewhat / Guess**
-        3. Briefly explain why.
-        4. Highlight the supporting text.
-
-        ### How to Decide
-        Count any **acute worsening of kidney function during this admission** as AKI — this includes  
-        *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*, and *prerenal azotemia.*
-
-        **Do Not Count**
-        - Chronic kidney disease (CKD) or ESRD alone  
-        - Past AKI from previous admissions  
-        - Statements clearly ruling out AKI (e.g., “no AKI,” “renal function stable”)
-
-        ### Remember
-        - Judge the **note writer’s belief**, not your own.  
-        - Focus on the **current admission only.**  
-        - We’ll review your first 10 annotated cases for calibration, then you’ll annotate 140 more.
-        """,
-        unsafe_allow_html=True,
+        ##  Instruction
+        **Before starting: Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/EQnr80BiXJ5HjRu58bAOCBkBTGRBPraOny7S16-gnnLyWQ?e=uBd3Nk) for the definitions of AKI**
+        """
     )
-
 
 # -------------------- Helpers --------------------
 import re
@@ -316,7 +291,7 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
             btns.forEach(b => {{
               if (b.__hl_hooked__) return;
               const t = (b.textContent||'');
-              if (t.includes('Save') || t.includes('Save Step 2')) {{
+              if (t.includes('Save Step 1') || t.includes('Save Step 2')) {{
                 b.__hl_hooked__ = true;
                 b.addEventListener('click', () => syncToUrl(), {{capture:true}});
               }}
@@ -609,6 +584,7 @@ except RuntimeError as e:
 # Debug info (optional)
 try:
     st.caption(f"Connected to Google Sheet: **{sh.title}**")
+    st.caption("Tabs: " + ", ".join([ws.title for ws in sh.worksheets()]))
 except Exception:
     # non-fatal debug failure
     pass
@@ -620,7 +596,7 @@ adm_headers = [
     "admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"
 ]
 
-
+labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 resp_headers = [
     "timestamp_et", "reviewer_id", "case_id", "step",
     "aki",                     # "Yes"/"No"
@@ -635,6 +611,7 @@ resp_headers = [
 
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
+ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
 # Cache the response headers once so we don’t re-read them on every save
@@ -643,16 +620,19 @@ if "resp_headers" not in st.session_state:
 
 
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
+labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
-
+admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
+labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
+responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 
 # Parse all relevant times
 for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"]:
     if _c in admissions.columns:
         admissions[_c] = pd.to_datetime(admissions[_c], errors="coerce")
 
-
+labs["timestamp"] = pd.to_datetime(labs["timestamp"], errors="coerce")
 
 
 
@@ -681,9 +661,9 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
             resp["step"] = []
 
         # Sets of finished/started cases
-        # Every saved Step 1 now counts as completed
-        completed_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) if not resp.empty else set()
-
+        completed_ids = set(resp.loc[resp["step"] == 2, "case_id"].astype(str)) if not resp.empty else set()
+        step1_only_ids = set \
+            (resp.loc[resp["step"] == 1, "case_id"].astype(str)) - completed_ids if not resp.empty else set()
 
         # Find first admission not fully completed
         target_idx = None
@@ -693,7 +673,7 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
             if cid in completed_ids:
                 continue
             target_idx = idx
-            target_step = 1
+            target_step = 2 if cid in step1_only_ids else 1
             break
 
         if target_idx is not None:
@@ -741,10 +721,27 @@ gender    = case.get("gender", "")          # <-- new
 st.caption(
     f"Reviewer: **{st.session_state.reviewer_id}** • "
     f"Admission {st.session_state.case_idx + 1}/{len(admissions)} • "
+    f"Step {st.session_state.step}/2"
 )
 st.markdown(f"### {case_id} — {title}")
 
+# Filter labs for this case
+case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
 
+# timestamp should already be datetime, but this is harmless if it is
+case_labs["timestamp"] = pd.to_datetime(case_labs["timestamp"], errors="coerce")
+
+# Compute hours since admission (will be NaN if admittime is missing)
+if pd.notna(admit_ts):
+    case_labs["hours"] = (case_labs["timestamp"] - admit_ts).dt.total_seconds() / 3600.0
+else:
+    case_labs["hours"] = pd.NA
+
+# Normalize kind for filtering, retain original for display
+case_labs["_kind_lower"] = case_labs["kind"].astype(str).str.lower()
+
+scr = case_labs[case_labs["_kind_lower"] == "scr"].sort_values("timestamp").copy()
+uo  = case_labs[case_labs["_kind_lower"] != "scr"].sort_values("timestamp").copy()
 
 
 
@@ -763,8 +760,167 @@ with left:
 
 with right:
     if st.session_state.step == 1:
-        st.info("Narrative only")
-    
+        st.info("Step 1: Narrative only. Do not use structured data.")
+    else:
+        st.info("Step 2: Summary + Figures + Tables")
+        import altair as alt
+        blurb = make_patient_blurb(age, gender, weight)
+        st.markdown(f"> {blurb} Click on a tab below to explore each visualization.")
+
+        # --- Tabs for four visualizations ---
+        tabs = st.tabs([
+            "Serum Creatinine (SCr)",
+            "Urine Output (UO)",
+            "Intake / Output",
+            "Procedures"
+        ])
+
+        # -------- Tab 1: Serum Creatinine --------
+        with tabs[0]:
+            st.markdown("**Serum Creatinine (mg/dL)**")
+            if not scr.empty:
+                src = scr.rename(columns={"value": "scr_value"}).copy()
+                intervals_df, horizon_hours = _build_intervals_hours(
+                    admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
+                )
+                if (horizon_hours is not None) and (src["hours"].notna().any()):
+                    max_tick = int(np.ceil(horizon_hours / 24.0) * 24)
+                    tick_vals = list(np.arange(0, max_tick + 1, 24))
+                    line = alt.Chart(src).mark_line(point=True).encode(
+                        x=alt.X("hours:Q",
+                                title="Hours since admission",
+                                scale=alt.Scale(domain=[0, horizon_hours]),
+                                axis=alt.Axis(values=tick_vals)),
+                        y=alt.Y("scr_value:Q", title="Serum Creatinine (mg/dL)"),
+                        tooltip=["timestamp:T", "hours:Q", "scr_value:Q", "unit:N", "kind:N"]
+                    )
+                    if not intervals_df.empty:
+                        shade = alt.Chart(intervals_df).mark_rect(opacity=0.25).encode(
+                            x="start:Q", x2="end:Q",
+                            color=alt.Color("label:N", legend=alt.Legend(title="Care setting"),
+                                            scale=alt.Scale(domain=["ED", "ICU"], range=["#fde68a", "#bfdbfe"]))
+                        )
+                        st.altair_chart(alt.layer(line, shade).resolve_scale(color='independent'), use_container_width=True)
+                    else:
+                        st.altair_chart(line, use_container_width=True)
+                else:
+                    st.altair_chart(
+                        alt.Chart(src).mark_line(point=True).encode(
+                            x="timestamp:T", y="scr_value:Q", tooltip=["timestamp:T", "scr_value:Q"]
+                        ),
+                        use_container_width=True,
+                    )
+            else:
+                st.warning("No SCr values for this case.")
+
+        # -------- Tab 2: Urine Output --------
+        with tabs[1]:
+            st.markdown("**Urine Output (mL)** — available during ICU only")
+            if not uo.empty:
+                uox = uo.rename(columns={"value": "uo_value"})
+                if pd.notna(admit_ts) and uox["hours"].notna().any():
+                    ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                        x="hours:Q", y="uo_value:Q", tooltip=["timestamp:T", "hours:Q", "uo_value:Q"]
+                    )
+                else:
+                    ch_uo = alt.Chart(uox).mark_line(point=True).encode(
+                        x="timestamp:T", y="uo_value:Q", tooltip=["timestamp:T", "uo_value:Q"]
+                    )
+                st.altair_chart(ch_uo, use_container_width=True)
+            else:
+                st.warning("No UO values for this case.")
+
+        #-------- Tab 3: Intake / Output --------
+        with tabs[2]:
+            st.markdown("**Intake and Output Balance (per time interval)**")
+            try:
+                inout = _read_ws_df(st.secrets["gsheet_id"], "inout")
+                if not inout.empty:
+                    inout_case = inout[inout["case_id"].astype(str) == case_id].copy()
+                    if not inout_case.empty:
+                        inout_case["day_start"] = pd.to_datetime(inout_case["day_start"], errors="coerce")
+                        inout_case["day_end"]   = pd.to_datetime(inout_case["day_end"], errors="coerce")
+                        if pd.notna(admit_ts):
+                            inout_case["start_hr"] = ((inout_case["day_start"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
+                            inout_case["end_hr"]   = ((inout_case["day_end"] - admit_ts).dt.total_seconds()/3600).round().astype("Int64")
+                        inout_case["intake_ml"] = inout_case["intake_ml"].astype(float).abs()
+                        inout_case["output_ml"] = -inout_case["output_ml"].astype(float).abs()
+                        inout_case["interval"] = inout_case["start_hr"].astype(str) + "–" + inout_case["end_hr"].astype(str)
+                        df_plot = inout_case.melt(
+                            id_vars=["interval"], value_vars=["intake_ml", "output_ml"],
+                            var_name="Type", value_name="mL"
+                        ).replace({"Type": {"intake_ml": "Intake (mL)", "output_ml": "Output (mL)"}})
+                        ch_inout = (
+                            alt.Chart(df_plot).mark_bar().encode(
+                                x=alt.X("interval:N", title="Interval (hours since admission)", axis=alt.Axis(labelAngle=45)),
+                                y=alt.Y("mL:Q", title="mL per interval", stack=None),
+                                color=alt.Color("Type:N", scale=alt.Scale(domain=["Intake (mL)", "Output (mL)"],
+                                                                         range=["#3b82f6", "#f97316"])),
+                                tooltip=["interval", "Type", "mL"]
+                            ).properties(height=320)
+                        )
+                        st.altair_chart(ch_inout, use_container_width=True)
+                    else:
+                        st.info("No intake/output records for this case.")
+                else:
+                    st.warning("Sheet 'inout' is empty.")
+            except Exception as e:
+                st.error(f"Could not load intake/output data: {e}")
+
+        # -------- Tab 4: Procedures --------
+        with tabs[3]:
+            st.markdown("**Procedures (ICD-coded)**")
+            try:
+                proc = _read_ws_df(st.secrets["gsheet_id"], "proc")
+                if not proc.empty:
+                    proc_case = proc[proc["case_id"].astype(str) == case_id].copy()
+                    if not proc_case.empty:
+                        proc_case["chartdate"] = pd.to_datetime(proc_case["chartdate"], errors="coerce")
+                        if pd.notna(admit_ts):
+                            proc_case["days_since_admit"] = np.clip(
+                                np.floor((proc_case["chartdate"] - admit_ts).dt.total_seconds()/(24*3600)), 0, None
+                            ).astype("Int64")
+                        proc_case = proc_case[["chartdate", "days_since_admit", "icd_code", "long_title"]].rename(
+                            columns={
+                                "chartdate": "Date",
+                                "days_since_admit": "Days After Admission",
+                                "icd_code": "ICD Code",
+                                "long_title": "Procedure Description",
+                            }
+                        )
+                        st.dataframe(proc_case.sort_values("Date"), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No procedures recorded for this case.")
+                else:
+                    st.warning("Procedure sheet ('proc') is empty.")
+            except Exception as e:
+                st.error(f"Could not load procedures: {e}")
+
+        # -------- Show PT text box --------
+        if PT.strip():
+            pt_clean = _clean_pt(PT)
+            st.markdown("**Pertinent Results**")
+            st.components.v1.html(
+                f"""
+                <div style="
+                    border:1px solid #bbb;
+                    border-radius:10px;
+                    padding:14px;
+                    white-space:pre-wrap;
+                    overflow-y:auto;
+                    max-height:300px;   /* adjustable */
+                    background-color:white;
+                    font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+                    line-height:1.55;
+                ">
+                    {_boldify_simple(pt_clean)}
+                </div>
+                """,
+                height=350
+            )
+
+
+
 
         
 
@@ -775,33 +931,31 @@ st.markdown("---")
 
 # ================== Questions & Saving ==================
 if st.session_state.step == 1:
-    st.subheader("Questions")
+    st.subheader("Step 1 — Questions")
 
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
-            "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
-            ["Yes", "No"], horizontal=True, key=f"q1_aki_{case_id}"
+            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+            ["Yes", "No"], horizontal=True, key="q1_aki"
+        )
+
+        # Bring back rationale
+        q_rationale = st.text_area(
+            "Please provide a brief rationale for your assessment. Please also highlight in the note any specific text that impacted your conclusion.",
+            height=140, key="q1_rationale"
         )
 
         q_conf = st.radio(
-            "How certain are you? ",
-            options=["Very","Somewhat","Guess"],
-            index=0,  # default = 3
+            "Confidence (choose 1–5)",
+            options=[1, 2, 3, 4, 5],
+            index=2,  # default = 3
             horizontal=True,
-            key=f"q1_conf_{case_id}",
+            key="q1_conf",
         )
-        
-        q_rationale = st.text_area(
-            "Please provide a brief rationale for your assessment. Please also highlight in the note any specific text that impacted your conclusion.",
-            height=140, key=f"q1_rationale_{case_id}"
-        )
-        
-        
 
 
 
-
-        submitted1 = st.form_submit_button("Save ✅", disabled=st.session_state.get("saving1", False))
+        submitted1 = st.form_submit_button("Save Step 1 ✅", disabled=st.session_state.get("saving1", False))
 
     if submitted1:
         try:
@@ -835,20 +989,10 @@ if st.session_state.step == 1:
             except Exception:
                 st.query_params.clear()
 
-            st.success("Saved.")
-
-            # Reset form values so next case starts clean
-            for key in ["q1_aki", "q1_rationale", "q1_conf"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            
-            # Advance to next admission
-            st.session_state.case_idx += 1
-            st.session_state.step = 1
+            st.success("Saved Step 1.")
+            st.session_state.step = 2
             st.session_state.jump_to_top = True
             _scroll_top(); time.sleep(0.25); _rerun()
-
-
         finally:
             st.session_state.saving1 = False
 
@@ -856,22 +1000,162 @@ if st.session_state.step == 1:
 
 
 
+
+
+
+else:
+    st.subheader("Step 2 — Questions (Full Context)")
+
+    # Proactively clear any leftover Step-1 highlight (safety)
+    try:
+        st.query_params.pop(f"hl_step1_{case_id}", None)
+    except Exception:
+        pass
+    st.markdown(
+        """
+        **Before you begin:**  
+        Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/EQnr80BiXJ5HjRu58bAOCBkBTGRBPraOny7S16-gnnLyWQ?e=uBd3Nk) for the definitions of AKI.  Use that shared definition when answering the following questions.
+        """
+    )
+    with st.form("step2_form", clear_on_submit=False):
+        
+        q_aki2 = st.radio(
+            "Given the info in the EHR record from this patient, do you believe this patient had AKI?",
+            ["Yes", "No"], horizontal=True, key="q2_aki"
+        )
+
+        # Confidence for Step 2 as well
+        q_conf2 = st.radio(
+            "Confidence (choose 1–5)",
+            options=[1, 2, 3, 4, 5],
+            index=2,  # default = 3
+            horizontal=True,
+            key="q2_conf",
+        )
+
+
+
+        # Think-aloud reasoning (keep)
+        q_reasoning = st.text_area(
+            "Please explain the reason for your decision. Please also highlight in the note any specific text that impacted your conclusion.",
+            height=180, key="q2_reasoning"
+        )
+
+        # Conditional fields if AKI == Yes
+        # Conditional fields if AKI == Yes
+        # Conditional fields if AKI == Yes
+        # Conditional fields if AKI == Yes
+        q_etiology_choice = ""
+        q_etiology_expl = ""
+        q_stage_choice = ""
+        q_stage_expl = ""
+        q_onset_exp = ""
+
+        if q_aki2 == "Yes":
+            st.markdown("**If you believe this patient had AKI, please answer the following questions:**")
+
+            # --- Etiology: radio then explain ---
+            etiology_options = ["Pre-renal", "Intrinsic (ATN)", "Intrinsic (Other)", "Post-renal(Obstruction)", "Multi-factorial"]
+            q_etiology_choice = st.radio(
+                "AKI etiology — What was the reason behind AKI?",
+                options=etiology_options,
+                horizontal=True,
+                key="q2_etiology_choice",
+            )
+            q_etiology_expl = st.text_area(
+                "Please explain how you concluded the etiology:",
+                key="q2_etiology_expl",
+                height=120
+            )
+
+            # --- Stage: radio then explain ---
+            stage_options = ["Mild", "Moderate", "Severe"]
+            q_stage_choice = st.radio(
+                "AKI Severity - How severe do you think the AKI episode was?",
+                options=stage_options,
+                horizontal=True,
+                key="q2_stage_choice",
+            )
+            q_stage_expl = st.text_area(
+                "Please explain how you concluded the severity:",
+                key="q2_stage_expl",
+                height=120
+            )
+
+            # --- Onset explanation (free text) ---
+            q_onset_exp = st.text_area(
+                "AKI onset — When did it start, and how did you conclude it?",
+                key="q2_onset_explanation",
+                height=160
+            )
+
+
+
+
+        submitted2 = st.form_submit_button("Save Step 2 ✅ (Next case)", disabled=st.session_state.get("saving2", False))
+
+    if submitted2:
+        try:
+            st.session_state.saving2 = True
+
+            # Read Step-2 highlights
+            qp_key2 = f"hl_step2_{case_id}"
+            qp = st.query_params
+            hl_html2 = urllib.parse.unquote(qp.get(qp_key2, "")) if qp_key2 in qp else ""
+            hl_html2 = _strip_strong_only(hl_html2)
+
+            row = {
+                "timestamp_et": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
+                "reviewer_id": st.session_state.reviewer_id,
+                "case_id": case_id,
+                "step": 2,
+                "aki": q_aki2,
+                "highlight_html": hl_html2,
+                "rationale": "",
+                "confidence": q_conf2,
+                "reasoning": q_reasoning,
+                "aki_etiology": (f"{q_etiology_choice} — {q_etiology_expl.strip()}" if q_aki2 == "Yes" else ""),
+                "aki_stage": (f"{q_stage_choice} — {q_stage_expl.strip()}" if q_aki2 == "Yes" else ""),
+                "aki_onset_explanation": (q_onset_exp if q_aki2 == "Yes" else "")
+            }
+
+
+            append_dict(ws_resp, row, headers=st.session_state.resp_headers)
+
+            # Clear Step-2 highlight param and advance
+            try:
+                st.query_params.pop(qp_key2, None)
+            except Exception:
+                st.query_params.clear()
+
+            st.success("Saved Step 2.")
+            st.session_state.step = 1
+            st.session_state.case_idx += 1
+            st.session_state.jump_to_top = True
+            _scroll_top(); time.sleep(0.25); _rerun()
+        finally:
+            st.session_state.saving2 = False
+
+
+
 # Navigation helpers
 c1, c2, c3 = st.columns(3)
 with c1:
     if st.button("◀ Back"):
-        if st.session_state.case_idx > 0:
+        if st.session_state.step == 2:
+            st.session_state.step = 1
+        elif st.session_state.case_idx > 0:
             st.session_state.case_idx -= 1
+            st.session_state.step = 2
         st.session_state.jump_to_top = True
         _scroll_top()
         time.sleep(0.18)
         _rerun()
-
 with c3:
     if st.button("Skip ▶"):
+        st.session_state.step = 1
         st.session_state.case_idx += 1
         st.session_state.jump_to_top = True
         _scroll_top()
         time.sleep(0.18)
         _rerun()
-
