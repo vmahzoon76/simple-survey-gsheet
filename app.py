@@ -779,7 +779,7 @@ if st.session_state.step == 1:
 
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
-            "Based on the discharge summary, do you think the note writers thought the patient had AKI?",
+            "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
             ["Yes", "No"], horizontal=True, key=f"q1_aki_{case_id}"
         )
 
