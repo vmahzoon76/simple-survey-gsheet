@@ -29,10 +29,35 @@ st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 if not st.session_state.get("entered", False):
     st.markdown(
         """
-        ##  Instruction
-        **Before starting: Please refer to the PowerPoint [slides here](https://tuprd-my.sharepoint.com/:p:/g/personal/tun53200_temple_edu/ETBC7JRhTf5LpN3JaySbyzEBEwHTP3ihMnpl4fYDM740HQ?e=hI4ZVi) for the protocol of this study.**
-        """
+        ## Annotation Task: What Did the Note Writer Believe About AKI?
+
+        ### Goal
+        Decide **what the discharge summary’s author believed** about acute kidney injury (AKI) **during the hospital stay — not your own clinical opinion.**
+
+        ### What You’ll Do
+        For each discharge summary, answer four questions:
+        1. Did the writer think the patient had AKI? → **Yes / No**
+        2. How certain are you? → **Very / Somewhat / Guess**
+        3. Briefly explain why.
+        4. Highlight the supporting text.
+
+        ### How to Decide
+        Count any **acute worsening of kidney function during this admission** as AKI — this includes  
+        *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*, and *prerenal azotemia.*
+
+        **Do Not Count**
+        - Chronic kidney disease (CKD) or ESRD alone  
+        - Past AKI from previous admissions  
+        - Statements clearly ruling out AKI (e.g., “no AKI,” “renal function stable”)
+
+        ### Remember
+        - Judge the **note writer’s belief**, not your own.  
+        - Focus on the **current admission only.**  
+        - We’ll review your first 10 annotated cases for calibration, then you’ll annotate 140 more.
+        """,
+        unsafe_allow_html=True,
     )
+
 
 # -------------------- Helpers --------------------
 import re
