@@ -22,33 +22,11 @@ try:
 except Exception:
     USE_GSHEETS = False
 
-
-    
 st.set_page_config(page_title="AKI Expert Review", layout="wide")
 st.title("AKI Expert Review")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 if not st.session_state.get("entered", False):
-    _html(
-        """
-        <script>
-        // run several times to beat Streamlit's late focus on sidebar input
-        function fixScroll() {
-            // if Streamlit focused an input, remove that focus
-            if (document.activeElement && document.activeElement.tagName === "INPUT") {
-                document.activeElement.blur();
-            }
-            window.scrollTo(0, 0);
-        }
-        fixScroll();
-        setTimeout(fixScroll, 200);
-        setTimeout(fixScroll, 700);
-        setTimeout(fixScroll, 1500);
-        </script>
-        """,
-        height=0,
-    )
-
     st.markdown(
         """
         ## Annotation Task: What Did the Note Writer Believe About AKI?
