@@ -23,7 +23,7 @@ except Exception:
     USE_GSHEETS = False
 
 st.set_page_config(page_title="AKI Expert Review", layout="wide")
-st.title("AKI Expert Review")
+st.markdown("<h1 style='margin-bottom:0;'>AKI Expert Review</h1>", unsafe_allow_html=True)
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
