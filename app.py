@@ -567,6 +567,7 @@ with st.sidebar:
 
 
 if not st.session_state.entered:
+    _scroll_top()
     st.markdown(
         """
         ## Annotation Task: What Did the Note Writer Believe About AKI?
