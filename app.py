@@ -82,7 +82,7 @@ if not st.session_state.get("entered", False):
         unsafe_allow_html=True,
     )
     force_scroll_top()
-    st.stop()
+    
 
 
 # -------------------- Helpers --------------------
