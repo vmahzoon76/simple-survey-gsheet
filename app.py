@@ -26,37 +26,8 @@ st.set_page_config(page_title="AKI Expert Review", layout="wide")
 st.title("AKI Expert Review")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
-if not st.session_state.get("entered", False):
-    st.markdown(
-        """
-        ## Annotation Task: What Did the Note Writer Believe About AKI?
 
-        ### Goal
-        Decide **what the discharge summary’s author believed** about acute kidney injury (AKI) **during the hospital stay — not your own clinical opinion.**
-
-        ### What You’ll Do
-        For each discharge summary, answer four questions:
-        1. Did the writer think the patient had AKI? → **Yes / No**
-        2. How certain are you? → **Very / Somewhat / Guess**
-        3. Briefly explain why.
-        4. Highlight the supporting text.
-
-        ### How to Decide
-        Count any **acute worsening of kidney function during this admission** as AKI — this includes  
-        *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*, and *prerenal azotemia.*
-
-        **Do Not Count**
-        - Chronic kidney disease (CKD) or ESRD alone  
-        - Past AKI from previous admissions  
-        - Statements clearly ruling out AKI (e.g., “no AKI,” “renal function stable”)
-
-        ### Remember
-        - Judge the **note writer’s belief**, not your own.  
-        - Focus on the **current admission only.**  
-        - We’ll review your first 10 annotated cases for calibration, then you’ll annotate 140 more.
-        """,
-        unsafe_allow_html=True,
-    )
+    
 
 
 # -------------------- Helpers --------------------
@@ -596,31 +567,36 @@ with st.sidebar:
 
 
 if not st.session_state.entered:
-    _html("""
-    <script>
-    function scrollTopFix() {
-        // scroll main document
-        window.scrollTo(0, 0);
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-        // also scroll parent if inside iframe
-        try {
-            if (window.parent && window.parent !== window) {
-                window.parent.scrollTo(0, 0);
-                const pdoc = window.parent.document;
-                if (pdoc) {
-                    pdoc.documentElement.scrollTop = 0;
-                    pdoc.body.scrollTop = 0;
-                }
-            }
-        } catch(e){}
-    }
-    scrollTopFix();
-    setTimeout(scrollTopFix, 100);
-    setTimeout(scrollTopFix, 400);
-    setTimeout(scrollTopFix, 1000);
-    </script>
-    """, height=0)
+    st.markdown(
+        """
+        ## Annotation Task: What Did the Note Writer Believe About AKI?
+
+        ### Goal
+        Decide **what the discharge summary’s author believed** about acute kidney injury (AKI) **during the hospital stay — not your own clinical opinion.**
+
+        ### What You’ll Do
+        For each discharge summary, answer four questions:
+        1. Did the writer think the patient had AKI? → **Yes / No**
+        2. How certain are you? → **Very / Somewhat / Guess**
+        3. Briefly explain why.
+        4. Highlight the supporting text.
+
+        ### How to Decide
+        Count any **acute worsening of kidney function during this admission** as AKI — this includes  
+        *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*, and *prerenal azotemia.*
+
+        **Do Not Count**
+        - Chronic kidney disease (CKD) or ESRD alone  
+        - Past AKI from previous admissions  
+        - Statements clearly ruling out AKI (e.g., “no AKI,” “renal function stable”)
+
+        ### Remember
+        - Judge the **note writer’s belief**, not your own.  
+        - Focus on the **current admission only.**  
+        - We’ll review your first 10 annotated cases for calibration, then you’ll annotate 140 more.
+        """,
+        unsafe_allow_html=True,
+    )
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
