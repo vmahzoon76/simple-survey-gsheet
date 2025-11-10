@@ -182,7 +182,6 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
       <div style="display:flex;gap:8px;margin-bottom:8px;">
         <button id="addBtn" type="button">Highlight</button>
-        <button id="clearBtn" type="button">Clear</button>
       </div>
 
       <div id="text"
@@ -275,10 +274,6 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
           }}
         }};
 
-        document.getElementById('clearBtn').onclick = () => {{
-          clearMarks(textEl);
-          syncToUrl();
-        }};
 
         // Final sync before save buttons
         const hookSave = () => {{
@@ -598,6 +593,12 @@ if not st.session_state.entered:
         """,
         unsafe_allow_html=True,
     )
+    st.markdown("""
+        ### Contact
+        If you encounter any technical issues or have questions about this website, please contact  
+        **Vahid Mahzoon** at [tun53200@temple.edu](mailto:tun53200@temple.edu).
+        """)
+
     st.markdown("### ▶️ How to Use This Website")
     _html(
         """
