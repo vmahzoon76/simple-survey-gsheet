@@ -596,8 +596,32 @@ with st.sidebar:
 
 
 if not st.session_state.entered:
+    _html("""
+    <script>
+    function scrollTopFix() {
+        // scroll main document
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        // also scroll parent if inside iframe
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.scrollTo(0, 0);
+                const pdoc = window.parent.document;
+                if (pdoc) {
+                    pdoc.documentElement.scrollTop = 0;
+                    pdoc.body.scrollTop = 0;
+                }
+            }
+        } catch(e){}
+    }
+    scrollTopFix();
+    setTimeout(scrollTopFix, 100);
+    setTimeout(scrollTopFix, 400);
+    setTimeout(scrollTopFix, 1000);
+    </script>
+    """, height=0)
     st.info("Please sign in with your Reviewer ID to begin.")
-    _scroll_top()
     st.stop()
 
 # ================== Load data from Google Sheets ==================
