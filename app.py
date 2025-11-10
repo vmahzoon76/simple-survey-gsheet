@@ -602,7 +602,7 @@ if not st.session_state.entered:
         """
         <div style="text-align:center;">
             <iframe 
-                src="https://temple.zoom.us/rec/share/9ZxULJ0GzhDfJo09pEyEQQW6bhkmOhEvc67hllK7qdi2ZbnSYQo4yRCbAB1pbDo.gfk-X39w8v8IGy5c?startTime=1762787171000" 
+                src="https://drive.google.com/file/d/12AuUzfG1QBXULffbfPWcmgXR_40rp4Kh/view?usp=share_link" 
                 width="800" height="450" frameborder="0" allowfullscreen>
             </iframe>
         </div>
