@@ -22,34 +22,11 @@ try:
 except Exception:
     USE_GSHEETS = False
 
-from streamlit.components.v1 import html as _html
-
-def scroll_to_top_js():
-    _html(
-        """
-        <script>
-        window.addEventListener('load', function() {
-            window.scrollTo(0,0);
-            document.body.scrollTop = 0;
-            document.documentElement.scrollTop = 0;
-        });
-        </script>
-        """,
-        height=0,
-    )
-
-if not st.session_state.get("entered", False):
-    scroll_to_top_js()
-    st.markdown("## Annotation Task ...", unsafe_allow_html=True)
-
-
-
 st.set_page_config(page_title="AKI Expert Review", layout="wide")
 st.title("AKI Expert Review")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 if not st.session_state.get("entered", False):
-    scroll_to_top_js()
     st.markdown(
         """
         ## Annotation Task: What Did the Note Writer Believe About AKI?
@@ -80,8 +57,6 @@ if not st.session_state.get("entered", False):
         """,
         unsafe_allow_html=True,
     )
- 
-    
 
 
 # -------------------- Helpers --------------------
