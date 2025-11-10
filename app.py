@@ -585,6 +585,7 @@ if not st.session_state.entered:
         ### How to Decide
         Count any **acute worsening of kidney function during this admission** as AKI — this includes  
         *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*.
+        
         **Do Not Count**
         - Chronic kidney disease (CKD) or ESRD alone  
         - Past AKI from previous admissions  
