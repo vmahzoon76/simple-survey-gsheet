@@ -87,7 +87,11 @@ st.title("AKI Expert Review")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 if not st.session_state.get("entered", False):
-    _scroll_top()
+    _html("""
+    <script>
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    </script>
+    """, height=0)
     st.markdown(
         """
         ## Annotation Task: What Did the Note Writer Believe About AKI?
