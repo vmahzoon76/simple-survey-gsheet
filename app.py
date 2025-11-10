@@ -22,72 +22,35 @@ try:
 except Exception:
     USE_GSHEETS = False
 
-def _scroll_top():
-    """
-    Aggressive scroll-to-top:
-     - sets location.hash to '#top' (requires the #top element to exist)
-     - scrolls window and parent (if in iframe)
-     - focuses the top anchor (helps some browsers)
-     - repeats attempts at multiple delays to survive Streamlit reflows/async loads
-    """
+from streamlit.components.v1 import html as _html
+
+def force_scroll_top():
     _html(
         """
         <script>
-        (function(){
-          try { if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; } } catch(e) {}
-
-          function topNow(){
-            try {
-              // anchor jump
-              try { location.hash = '#top'; } catch(e){}
-
-              // scroll window/document
-              try { window.scrollTo(0,0); } catch(e){}
-              try { document.documentElement && (document.documentElement.scrollTop = 0); } catch(e){}
-              try { document.body && (document.body.scrollTop = 0); } catch(e){}
-
-              // parent frame if embedded
-              try {
-                if (window.parent && window.parent !== window) {
-                  try { window.parent.scrollTo(0,0); } catch(e){}
-                  try {
-                    var pdoc = window.parent.document;
-                    if (pdoc) {
-                      pdoc.documentElement && (pdoc.documentElement.scrollTop = 0);
-                      pdoc.body && (pdoc.body.scrollTop = 0);
-                    }
-                  } catch(e){}
-                }
-              } catch(e){}
-
-              // focus anchor (preventScroll true not supported everywhere, but trying helps)
-              try {
-                var el = document.getElementById('top');
-                if (el && typeof el.focus === 'function') { el.focus(); }
-              } catch(e){}
-            } catch(e){}
-          }
-
-          // call several times to survive Streamlit's DOM changes / async loads
-          topNow();
-          setTimeout(topNow, 50);
-          setTimeout(topNow, 150);
-          setTimeout(topNow, 400);
-          setTimeout(topNow, 900);
-          setTimeout(topNow, 1500);
-          setTimeout(topNow, 3000);
-        })();
+        // run a few times to survive Streamlit reflows
+        function goTop() {
+          try {
+            window.scrollTo(0, 0);
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+          } catch (e) {}
+        }
+        goTop();
+        setTimeout(goTop, 100);
+        setTimeout(goTop, 400);
+        setTimeout(goTop, 900);
         </script>
         """,
         height=0,
     )
+
 
 st.set_page_config(page_title="AKI Expert Review", layout="wide")
 st.title("AKI Expert Review")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 if not st.session_state.get("entered", False):
-    _scroll_top()
     st.markdown(
         """
         ## Annotation Task: What Did the Note Writer Believe About AKI?
@@ -118,6 +81,8 @@ if not st.session_state.get("entered", False):
         """,
         unsafe_allow_html=True,
     )
+    force_scroll_top()
+    st.stop()
 
 
 # -------------------- Helpers --------------------
