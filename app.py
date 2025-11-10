@@ -13,66 +13,6 @@ import pandas as pd
 import streamlit as st
 from streamlit.components.v1 import html as _html
 
-def _scroll_top():
-    """
-    Aggressive scroll-to-top:
-     - sets location.hash to '#top' (requires the #top element to exist)
-     - scrolls window and parent (if in iframe)
-     - focuses the top anchor (helps some browsers)
-     - repeats attempts at multiple delays to survive Streamlit reflows/async loads
-    """
-    _html(
-        """
-        <script>
-        (function(){
-          try { if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; } } catch(e) {}
-
-          function topNow(){
-            try {
-              // anchor jump
-              try { location.hash = '#top'; } catch(e){}
-
-              // scroll window/document
-              try { window.scrollTo(0,0); } catch(e){}
-              try { document.documentElement && (document.documentElement.scrollTop = 0); } catch(e){}
-              try { document.body && (document.body.scrollTop = 0); } catch(e){}
-
-              // parent frame if embedded
-              try {
-                if (window.parent && window.parent !== window) {
-                  try { window.parent.scrollTo(0,0); } catch(e){}
-                  try {
-                    var pdoc = window.parent.document;
-                    if (pdoc) {
-                      pdoc.documentElement && (pdoc.documentElement.scrollTop = 0);
-                      pdoc.body && (pdoc.body.scrollTop = 0);
-                    }
-                  } catch(e){}
-                }
-              } catch(e){}
-
-              // focus anchor (preventScroll true not supported everywhere, but trying helps)
-              try {
-                var el = document.getElementById('top');
-                if (el && typeof el.focus === 'function') { el.focus(); }
-              } catch(e){}
-            } catch(e){}
-          }
-
-          // call several times to survive Streamlit's DOM changes / async loads
-          topNow();
-          setTimeout(topNow, 50);
-          setTimeout(topNow, 150);
-          setTimeout(topNow, 400);
-          setTimeout(topNow, 900);
-          setTimeout(topNow, 1500);
-          setTimeout(topNow, 3000);
-        })();
-        </script>
-        """,
-        height=0,
-    )
-
 # Optional Google Sheets support
 USE_GSHEETS = True
 try:
@@ -117,9 +57,6 @@ if not st.session_state.get("entered", False):
         """,
         unsafe_allow_html=True,
     )
-
-    time.sleep(0.1)
-    _scroll_top()
 
 
 # -------------------- Helpers --------------------
@@ -416,6 +353,66 @@ def _read_ws_df(sheet_id, ws_title):
     return pd.DataFrame(recs)
 
 
+
+def _scroll_top():
+    """
+    Aggressive scroll-to-top:
+     - sets location.hash to '#top' (requires the #top element to exist)
+     - scrolls window and parent (if in iframe)
+     - focuses the top anchor (helps some browsers)
+     - repeats attempts at multiple delays to survive Streamlit reflows/async loads
+    """
+    _html(
+        """
+        <script>
+        (function(){
+          try { if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; } } catch(e) {}
+
+          function topNow(){
+            try {
+              // anchor jump
+              try { location.hash = '#top'; } catch(e){}
+
+              // scroll window/document
+              try { window.scrollTo(0,0); } catch(e){}
+              try { document.documentElement && (document.documentElement.scrollTop = 0); } catch(e){}
+              try { document.body && (document.body.scrollTop = 0); } catch(e){}
+
+              // parent frame if embedded
+              try {
+                if (window.parent && window.parent !== window) {
+                  try { window.parent.scrollTo(0,0); } catch(e){}
+                  try {
+                    var pdoc = window.parent.document;
+                    if (pdoc) {
+                      pdoc.documentElement && (pdoc.documentElement.scrollTop = 0);
+                      pdoc.body && (pdoc.body.scrollTop = 0);
+                    }
+                  } catch(e){}
+                }
+              } catch(e){}
+
+              // focus anchor (preventScroll true not supported everywhere, but trying helps)
+              try {
+                var el = document.getElementById('top');
+                if (el && typeof el.focus === 'function') { el.focus(); }
+              } catch(e){}
+            } catch(e){}
+          }
+
+          // call several times to survive Streamlit's DOM changes / async loads
+          topNow();
+          setTimeout(topNow, 50);
+          setTimeout(topNow, 150);
+          setTimeout(topNow, 400);
+          setTimeout(topNow, 900);
+          setTimeout(topNow, 1500);
+          setTimeout(topNow, 3000);
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
     """
