@@ -597,6 +597,18 @@ if not st.session_state.entered:
         """,
         unsafe_allow_html=True,
     )
+    st.markdown("### ▶️ How to Use This Website")
+    _html(
+        """
+        <div style="text-align:center;">
+            <iframe 
+                src="https://temple.zoom.us/rec/share/9ZxULJ0GzhDfJo09pEyEQQW6bhkmOhEvc67hllK7qdi2ZbnSYQo4yRCbAB1pbDo.gfk-X39w8v8IGy5c?startTime=1762787171000" 
+                width="800" height="450" frameborder="0" allowfullscreen>
+            </iframe>
+        </div>
+        """,
+        height=480,
+    )
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
