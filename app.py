@@ -596,6 +596,7 @@ with st.sidebar:
 
 
 if not st.session_state.entered:
+    _scroll_top()
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
