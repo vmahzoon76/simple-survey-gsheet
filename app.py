@@ -584,7 +584,7 @@ if not st.session_state.entered:
 
         ### How to Decide
         Count any **acute worsening of kidney function during this admission** as AKI — this includes  
-        *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*, and *prerenal azotemia.*
+        *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*.
         **Do Not Count**
         - Chronic kidney disease (CKD) or ESRD alone  
         - Past AKI from previous admissions  
@@ -797,17 +797,30 @@ if st.session_state.step == 1:
         )
 
         q_conf = st.radio(
-            "How certain are you? ",
-            options=["Very","Somewhat","Guess"],
+            "Are you certain? ",
+            options=["Yes","No"],
             index=0,  # default = 3
             horizontal=True,
             key=f"q1_conf_{case_id}",
         )
+
         
         q_rationale = st.text_area(
             "Please provide a brief rationale for your assessment. Please also highlight in the note any specific text that impacted your conclusion.",
             height=140, key=f"q1_rationale_{case_id}"
         )
+
+        aki_et = st.multiselect(
+        "If so, was there evidence for the etiology of AKI? (Select all that apply)",
+        options=[
+            "Decreased perfusion (ATN or prerenal)",
+            "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
+            "Obstruction",
+            "Not enough data",
+        ],
+        key=f"q1_aki_et_{case_id}",
+    )
+
         
         
 
@@ -836,7 +849,7 @@ if st.session_state.step == 1:
                 "rationale": q_rationale,
                 "confidence": q_conf,
                 "reasoning": "",
-                "aki_etiology": "",
+                "aki_etiology": "; ".join(aki_et),
                 "aki_stage": "",
                 "aki_onset_explanation": ""
             }
