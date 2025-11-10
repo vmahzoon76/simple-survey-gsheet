@@ -58,6 +58,9 @@ if not st.session_state.get("entered", False):
         unsafe_allow_html=True,
     )
 
+    time.sleep(0.1)
+    _scroll_top()
+
 
 # -------------------- Helpers --------------------
 import re
