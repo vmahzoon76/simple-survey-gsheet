@@ -855,7 +855,7 @@ if st.session_state.step == 1:
                 "highlight_html": hl_html,
                 "rationale": q_rationale,
                 "aki_etiology": "; ".join(aki_et),
-                "aki_own": q_aki_own 
+                "aki_own": q_aki_own, 
                 "aki_explicit": q_explicit
 
             }
