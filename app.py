@@ -640,11 +640,9 @@ resp_headers = [
     "aki",                     # "Yes"/"No"
     "highlight_html",          # <mark>...</mark> from this step
     "rationale",               # free-text rationale (Step 1) or empty on Step 2
-    "confidence",              # 1–5 for both steps
-    "reasoning",               # think-aloud (Step 2) or empty on Step 1
-    "aki_etiology",            # Step 2 only when aki == "Yes"
-    "aki_stage",               # Step 2 only when aki == "Yes"
-    "aki_onset_explanation"    # Step 2 only when aki == "Yes"
+    "aki_etiology",            # Step 2 only when aki == "Yes
+    "aki_own",
+    "aki_explicit"
 ]
 
 
@@ -797,12 +795,20 @@ if st.session_state.step == 1:
             ["Yes", "No"], horizontal=True, key=f"q1_aki_{case_id}"
         )
 
-        q_conf = st.radio(
-            "Are you certain? ",
-            options=["Yes","No"],
+        q_explicit = st.radio(
+            "If AKI, was it explicitly mentioned or implied? ",
+            options=["Explicitly Mentioned","Implied"],
             index=0,  # default = 3
             horizontal=True,
-            key=f"q1_conf_{case_id}",
+            key=f"q1_explicit_{case_id}",
+        )
+
+        q_aki_own = st.radio(
+            "Based on the discharge summary, do you think the patient had AKI?",
+            options=["Yes","No","Maybe"],
+            index=0,  # default = 3
+            horizontal=True,
+            key=f"q1_aki_own_{case_id}",
         )
 
         
@@ -848,11 +854,10 @@ if st.session_state.step == 1:
                 "aki": q_aki,
                 "highlight_html": hl_html,
                 "rationale": q_rationale,
-                "confidence": q_conf,
-                "reasoning": "",
                 "aki_etiology": "; ".join(aki_et),
-                "aki_stage": "",
-                "aki_onset_explanation": ""
+                "aki_own": q_aki_own 
+                "aki_explicit": q_explicit
+
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
 
@@ -883,22 +888,22 @@ if st.session_state.step == 1:
 
 
 
-# # Navigation helpers
-# c1, c2, c3 = st.columns(3)
-# with c1:
-#     if st.button("◀ Back"):
-#         if st.session_state.case_idx > 0:
-#             st.session_state.case_idx -= 1
-#         st.session_state.jump_to_top = True
-#         _scroll_top()
-#         time.sleep(0.18)
-#         _rerun()
+# Navigation helpers
+c1, c2, c3 = st.columns(3)
+with c1:
+    if st.button("◀ Back"):
+        if st.session_state.case_idx > 0:
+            st.session_state.case_idx -= 1
+        st.session_state.jump_to_top = True
+        _scroll_top()
+        time.sleep(0.18)
+        _rerun()
 
-# with c3:
-#     if st.button("Skip ▶"):
-#         st.session_state.case_idx += 1
-#         st.session_state.jump_to_top = True
-#         _scroll_top()
-#         time.sleep(0.18)
-#         _rerun()
+with c3:
+    if st.button("Skip ▶"):
+        st.session_state.case_idx += 1
+        st.session_state.jump_to_top = True
+        _scroll_top()
+        time.sleep(0.18)
+        _rerun()
 
