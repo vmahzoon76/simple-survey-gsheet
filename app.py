@@ -822,7 +822,10 @@ if st.session_state.step == 1:
         # If YES → show extra AKI-related questions
         
         
-        
+        st.markdown(
+    "**If you believe the patient had AKI, please answer the following questions. "
+    "If not, just leave them empty.**"
+)
    
 
         # If YES → show extra AKI-related questions
@@ -843,7 +846,7 @@ if st.session_state.step == 1:
     
         q_onset = st.radio(
             "If AKI, did the patient have it at admission or develop it during the stay?",
-            ["","Had it at admission", "Developed it during stay"],
+            ["Had it at admission", "Developed it during stay"],
             horizontal=True,
             key=f"q1_onset_{case_id}",
         )
