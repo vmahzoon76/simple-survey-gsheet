@@ -642,7 +642,8 @@ resp_headers = [
     "rationale",               # free-text rationale (Step 1) or empty on Step 2
     "aki_etiology",            # Step 2 only when aki == "Yes
     "aki_own",
-    "aki_explicit"
+    "aki_explicit",
+    "aki_onset"
 ]
 
 
@@ -817,16 +818,29 @@ if st.session_state.step == 1:
             height=140, key=f"q1_rationale_{case_id}"
         )
 
-        aki_et = st.multiselect(
-        "If so, was there evidence for the etiology of AKI? (Select all that apply)",
-        options=[
-            "Decreased perfusion (ATN or prerenal)",
-            "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
-            "Obstruction",
-            "Not enough data",
-        ],
-        key=f"q1_aki_et_{case_id}",
-    )
+        aki_et = st.pills(
+            "If so, was there evidence for the etiology of AKI? (Select all that apply)",
+            options=[
+                "Decreased perfusion (ATN or prerenal)",
+                "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
+                "Obstruction",
+                "Not enough data",
+            ],
+            selection_mode="multi",
+            key=f"q1_aki_et_{case_id}",
+        )
+
+
+        q_onset = st.radio(
+            "If AKI, did they have it at admission time or did they develop it during the stay?",
+            options=[
+                "Had it at admission",
+                "Developed it during stay",
+            ],
+            horizontal=True,
+            key=f"q1_onset_{case_id}",
+)
+
 
         
         
@@ -856,7 +870,8 @@ if st.session_state.step == 1:
                 "rationale": q_rationale,
                 "aki_etiology": "; ".join(aki_et),
                 "aki_own": q_aki_own, 
-                "aki_explicit": q_explicit
+                "aki_explicit": q_explicit,
+                "aki_onset": q_onset,
 
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
