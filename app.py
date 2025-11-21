@@ -819,7 +819,7 @@ if st.session_state.step == 1:
         )
 
         aki_et = st.pills(
-            "If so, was there evidence for the etiology of AKI? (Select all that apply)",
+            "If AKI, was there evidence for the etiology of AKI? (Select all that apply)",
             options=[
                 "Decreased perfusion (ATN or prerenal)",
                 "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
