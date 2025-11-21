@@ -826,33 +826,29 @@ if st.session_state.step == 1:
 )
 
         # If YES → show extra AKI-related questions
-        if q_aki_own == "Yes":
         
         
-            aki_et = st.pills(
-                "If so, was there evidence for the etiology of AKI? (Select all that apply)",
-                options=[
-                    "Decreased perfusion (ATN or prerenal)",
-                    "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
-                    "Obstruction",
-                    "Not enough data",
-                ],
-                selection_mode="multi",
-                key=f"q1_aki_et_{case_id}",
-            )
         
-            q_onset = st.radio(
-                "If AKI, did the patient have it at admission or develop it during the stay?",
-                ["Had it at admission", "Developed it during stay"],
-                horizontal=True,
-                key=f"q1_onset_{case_id}",
-            )
+        aki_et = st.pills(
+            "If so, was there evidence for the etiology of AKI? (Select all that apply)",
+            options=[
+                "Decreased perfusion (ATN or prerenal)",
+                "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
+                "Obstruction",
+                "Not enough data",
+            ],
+            selection_mode="multi",
+            key=f"q1_aki_et_{case_id}",
+        )
+    
+        q_onset = st.radio(
+            "If AKI, did the patient have it at admission or develop it during the stay?",
+            ["Had it at admission", "Developed it during stay"],
+            horizontal=True,
+            key=f"q1_onset_{case_id}",
+        )
         
-        else:
-        
-            aki_et = []
-            q_onset = ""
-
+      
 
 
         
