@@ -836,6 +836,7 @@ if st.session_state.step == 1:
             options=[
                 "Had it at admission",
                 "Developed it during stay",
+                "I do not know"
             ],
             horizontal=True,
             key=f"q1_onset_{case_id}",
