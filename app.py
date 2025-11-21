@@ -807,7 +807,7 @@ if st.session_state.step == 1:
         q_aki_own = st.radio(
             "Based on the discharge summary, do you think the patient had AKI?",
             options=["Yes","No","Maybe"],
-            index=1,  # default = 3
+            index=0,  # default = 3
             horizontal=True,
             key=f"q1_aki_own_{case_id}",
         )
