@@ -844,12 +844,16 @@ if st.session_state.step == 1:
             key=f"q1_aki_et_{case_id}",
         )
     
-        q_onset = st.radio(
-            "If AKI, did the patient have it at admission or develop it during the stay?",
-            ["Had it at admission", "Developed it during stay"],
-            horizontal=True,
-            key=f"q1_onset_{case_id}",
-        )
+        q_onset = st.pills(
+        "If AKI, did the patient have it at admission or develop it during the stay?",
+        options=[
+            "Had it at admission",
+            "Developed it during stay",
+        ],
+        selection_mode="single",
+        key=f"q1_onset_{case_id}",
+)
+
         
        
 
