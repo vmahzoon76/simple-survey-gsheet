@@ -630,7 +630,8 @@ resp_headers = [
     "aki_own",
     "aki_onset",
     "rational_aki_own",
-    "treat_aki"
+    "treat_aki",
+    "aki_surprise",
 ]
 
 
@@ -894,8 +895,7 @@ if st.session_state.step == 1:
                 "rationale_aki": q_rationale_writer,
                 "aki_etiology": "; ".join(aki_et),
                 "aki_own": q_aki_own, 
-                "aki_explicit": q_explicit,
-                "rational_aki_own": q_rationale
+                "rational_aki_own": q_rationale,
                 "aki_onset": q_onset,
                 "aki_surprise":q_surprise,
                 "treat_aki":q_treated
