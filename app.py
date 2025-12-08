@@ -563,35 +563,39 @@ with st.sidebar:
 if not st.session_state.entered:
     _scroll_top()
     st.markdown(
-        """
-        ## Annotation Task: What Did the Note Writer Believe About AKI?
+    """
+    ## Annotation Task for AKI diagnosis
 
-        ### Goal
-        Decide **what the discharge summary’s author believed** about acute kidney injury (AKI) **during the hospital stay — not your own clinical opinion.**
+    ### Goal
+    Read a discharge summary and conclude:
+    1. Did the note writer think the patient had AKI?  
+    2. Do *you* think the patient had AKI?  
+    3. Briefly justify your answers.  
+    4. Highlight the supporting text.
 
-        ### What You’ll Do
-        For each discharge summary, answer four questions:
-        1. Did the writer think the patient had AKI? → **Yes / No**
-        2. How certain are you? → **Very / Somewhat / Guess**
-        3. Briefly explain why.
-        4. Highlight the supporting text.
+    ### How to Decide
+    Count any **acute worsening of kidney function during this admission** as AKI — including:
+    * acute renal failure (ARF)  
+    * acute kidney injury (AKI)  
+    * acute on chronic  
+    * acute tubular necrosis (ATN)  
+    * acute renal insufficiency  
 
-        ### How to Decide
-        Count any **acute worsening of kidney function during this admission** as AKI — this includes  
-        *acute renal failure (ARF)*, *acute kidney injury (AKI)*, *acute on chronic*, *acute tubular necrosis (ATN)*, *acute renal insufficiency*.
-        
-        **Do Not Count**
-        - Chronic kidney disease (CKD) or ESRD alone  
-        - Past AKI from previous admissions  
-        - Statements clearly ruling out AKI (e.g., “no AKI,” “renal function stable”)
+    ### Do Not Count
+    • Chronic kidney disease (CKD) or ESRD alone  
+    • Past AKI from previous admissions  
+    • Statements clearly ruling out AKI (e.g., “no AKI,” “renal function stable”)  
 
-        ### Remember
-        - Judge the **note writer’s belief**, not your own.  
-        - Focus on the **current admission only.**  
-        - We’ll review your first 10 annotated cases for calibration, then you’ll annotate 140 more.
-        """,
-        unsafe_allow_html=True,
-    )
+    ### Remember
+    • Sometimes the note writer’s belief and *your* belief may differ.  
+    • Focus only on **this admission**.
+
+    ### Contact
+    If you encounter technical issues or questions:  
+    **Vahid Mahzoon** — tun53200@temple.edu
+    """
+)
+
     st.markdown("""
         ### Contact
         If you encounter any technical issues or have questions about this website, please contact  
@@ -793,24 +797,32 @@ if st.session_state.step == 1:
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
-            ["Yes", "No"], horizontal=True, key=f"q1_aki_{case_id}"
+            ["Yes — explicitly mentioned", "Yes — could be implied", "No"],
+            horizontal=False,
+            key=f"q1_aki_{case_id}"
+)
+        q_rationale_writer = st.text_area(
+            "Please provide a brief rationale for your assessment.",
+            height=140,
+            key=f"q1_rationale_writer_{case_id}"
         )
 
-        q_explicit = st.radio(
-            "If AKI, was it explicitly mentioned or implied? ",
-            options=["Explicitly Mentioned","Implied"],
-            index=0,  # default = 3
-            horizontal=True,
-            key=f"q1_explicit_{case_id}",
-        )
 
         q_aki_own = st.radio(
-            "Based on the discharge summary, do you think the patient had AKI?",
-            options=["Yes","No","Maybe"],
-            index=0,  # default = 3
+            "Based on the discharge summary, do you personally think the patient had AKI?",
+            ["Yes", "Maybe", "No"],
             horizontal=True,
-            key=f"q1_aki_own_{case_id}",
+            key=f"q1_aki_own_{case_id}"
         )
+
+
+        q_surprise = st.radio(
+            "How surprised would you be to learn that the patient had AKI during the stay?",
+            ["Not surprised", "Somewhat surprised", "Very surprised"],
+            horizontal=True,
+            key=f"q1_surprise_{case_id}"
+        )
+
 
         
         q_rationale = st.text_area(
@@ -823,8 +835,7 @@ if st.session_state.step == 1:
         
         
         st.markdown(
-    "**If you believe the patient had AKI, please answer the following questions. "
-    "If not, just leave them empty.**"
+    "**If there is a chance that the patient had AKI, please answer the following questions. If not, no need to select any.**"
 )
    
 
@@ -853,6 +864,17 @@ if st.session_state.step == 1:
         selection_mode="single",
         key=f"q1_onset_{case_id}",
 )
+
+        q_treated = st.pills(
+    "Is there any evidence in the summary that the patient might have been treated for AKI?",
+    options=[
+        "Yes",
+        "No",
+    ],
+    selection_mode="single",
+    key=f"q1_treated_{case_id}",
+)
+
 
         
        
@@ -922,22 +944,22 @@ if st.session_state.step == 1:
 
 
 
-# Navigation helpers
-c1, c2, c3 = st.columns(3)
-with c1:
-    if st.button("◀ Back"):
-        if st.session_state.case_idx > 0:
-            st.session_state.case_idx -= 1
-        st.session_state.jump_to_top = True
-        _scroll_top()
-        time.sleep(0.18)
-        _rerun()
+# # Navigation helpers
+# c1, c2, c3 = st.columns(3)
+# with c1:
+#     if st.button("◀ Back"):
+#         if st.session_state.case_idx > 0:
+#             st.session_state.case_idx -= 1
+#         st.session_state.jump_to_top = True
+#         _scroll_top()
+#         time.sleep(0.18)
+#         _rerun()
 
-with c3:
-    if st.button("Skip ▶"):
-        st.session_state.case_idx += 1
-        st.session_state.jump_to_top = True
-        _scroll_top()
-        time.sleep(0.18)
-        _rerun()
+# with c3:
+#     if st.button("Skip ▶"):
+#         st.session_state.case_idx += 1
+#         st.session_state.jump_to_top = True
+#         _scroll_top()
+#         time.sleep(0.18)
+#         _rerun()
 
