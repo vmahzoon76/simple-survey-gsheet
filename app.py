@@ -625,11 +625,12 @@ resp_headers = [
     "timestamp_et", "reviewer_id", "case_id", "step",
     "aki",                     # "Yes"/"No"
     "highlight_html",          # <mark>...</mark> from this step
-    "rationale",               # free-text rationale (Step 1) or empty on Step 2
+    "rationale_aki",               # free-text rationale (Step 1) or empty on Step 2
     "aki_etiology",            # Step 2 only when aki == "Yes
     "aki_own",
-    "aki_explicit",
-    "aki_onset"
+    "aki_onset",
+    "rational_aki_own",
+    "treat_aki"
 ]
 
 
@@ -890,11 +891,14 @@ if st.session_state.step == 1:
                 "step": 1,
                 "aki": q_aki,
                 "highlight_html": hl_html,
-                "rationale": q_rationale,
+                "rationale_aki": q_rationale_writer,
                 "aki_etiology": "; ".join(aki_et),
                 "aki_own": q_aki_own, 
                 "aki_explicit": q_explicit,
+                "rational_aki_own": q_rationale
                 "aki_onset": q_onset,
+                "aki_surprise":q_surprise,
+                "treat_aki":q_treated
 
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
