@@ -596,24 +596,6 @@ if not st.session_state.entered:
     """
 )
 
-    st.markdown("""
-        ### Contact
-        If you encounter any technical issues or have questions about this website, please contact  
-        **Vahid Mahzoon** at [tun53200@temple.edu](mailto:tun53200@temple.edu).
-        """)
-
-    st.markdown("### ▶️ How to Use This Website")
-    _html(
-        """
-        <div style="text-align:center;">
-            <iframe 
-                src="https://drive.google.com/file/d/1mCDc2YlSFNHjm3DuzuIg2aPMuA4VNtpZ/preview" 
-                width="800" height="450" frameborder="0" allowfullscreen>
-            </iframe>
-        </div>
-        """,
-        height=480,
-    )
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
 
@@ -844,7 +826,7 @@ if st.session_state.step == 1:
         
         
         aki_et = st.pills(
-            "If so, was there evidence for the etiology of AKI? (Select all that apply)",
+            "Was there evidence for the etiology of AKI? (Select all that apply)",
             options=[
                 "Decreased perfusion (ATN or prerenal)",
                 "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
@@ -856,7 +838,7 @@ if st.session_state.step == 1:
         )
     
         q_onset = st.pills(
-        "If AKI, did the patient have it at admission or develop it during the stay?",
+        "Did the patient have it at admission or develop it during the stay?",
         options=[
             "Had it at admission",
             "Developed it during stay",
