@@ -180,7 +180,18 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
       <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button id="addBtn" type="button">Highlight</button>
+        <button id="addBtn" type="button"
+    style="
+        font-size: 18px;
+        padding: 10px 22px;
+        border-radius: 10px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        cursor: pointer;
+    "
+>Highlight</button>
+
       </div>
 
       <div id="text"
