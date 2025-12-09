@@ -843,8 +843,9 @@ if st.session_state.step == 1:
         
         
         st.markdown(
-    "**If there is a chance that the patient had AKI, please answer the following questions. If not, no need to select any.**"
+    "If there is a chance that the **patient had AKI**, please answer the following questions. If not, **no need to select any**."
 )
+
    
 
         # If YES → show extra AKI-related questions
@@ -857,6 +858,7 @@ if st.session_state.step == 1:
                 "Decreased perfusion (ATN or prerenal)",
                 "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
                 "Obstruction",
+                "Other",
                 "Not enough data",
             ],
             selection_mode="multi",
