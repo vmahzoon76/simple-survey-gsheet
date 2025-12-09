@@ -179,20 +179,27 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
 
     code = f"""
     <div style="font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.55;">
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button id="addBtn" type="button"
-    style="
-        font-size: 18px;
-        padding: 10px 22px;
-        border-radius: 10px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        cursor: pointer;
-    "
->Highlight</button>
+      <div style="display:flex;flex-direction:row;align-items:center;gap:12px;margin-bottom:8px;">
+    <button id="addBtn" type="button"
+        style="
+            font-size: 18px;
+            padding: 10px 22px;
+            border-radius: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+        "
+    >Highlight</button>
 
-      </div>
+    <div style="font-size:14px; color:#444; max-width:550px;">
+        Use your mouse to select text. After selecting, click the green
+        <strong>Highlight</strong> button to save it.  
+        You can repeat this for multiple selections.
+    </div>
+</div>
+
 
       <div id="text"
            style="border:1px solid #bbb;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-y:auto;
