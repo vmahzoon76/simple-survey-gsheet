@@ -778,6 +778,9 @@ st.markdown("---")
 if st.session_state.step == 1:
     st.subheader("Questions")
 
+    st.markdown(
+    "**Please remember to highlight (using the highlight button above the discharge summary) parts of the note which provide positive or negative evidence about AKI. **"
+)
     with st.form("step1_form", clear_on_submit=False):
         q_aki = st.radio(
             "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
