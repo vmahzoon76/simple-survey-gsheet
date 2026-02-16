@@ -872,18 +872,16 @@ with right:
 
     # ======== ALWAYS SHOW: Timeline ========
     # ======== ALWAYS SHOW: Timeline ========
-    # ======== ALWAYS SHOW: Timeline ========
-    # ======== ALWAYS SHOW: Timeline ========
     st.markdown("**Care Timeline (ED / ICU Periods)**")
     if not intervals_df.empty and horizon_hours:
         timeline_chart = alt.Chart(intervals_df).mark_bar(size=25).encode(
             x=alt.X("start:Q",
                     scale=alt.Scale(domain=[0, horizon_hours]),
-                    axis=alt.Axis(values=tick_vals, labelAngle=0),
+                    axis=alt.Axis(values=tick_vals, labelAngle=0, labelFontSize=11, titleFontSize=12),
                     title="Hours since admission"),
             x2="end:Q",
             y=alt.Y("label:N",
-                    axis=alt.Axis(title=None, labels=False, ticks=False, domain=False),
+                    axis=alt.Axis(title="", labels=False, ticks=False, domain=False),
                     scale=alt.Scale(paddingInner=0.5)),
             color=alt.Color(
                 "label:N",
@@ -898,7 +896,12 @@ with right:
                 alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
                 alt.Tooltip("end:Q", format=".1f", title="End (hr)")
             ]
-        ).properties(height=100).configure_view(strokeWidth=0).configure_axis(
+        ).properties(
+            height=100,
+            width="container"
+        ).configure_view(
+            strokeWidth=0
+        ).configure_axis(
             labelFontSize=11,
             titleFontSize=12
         )
@@ -917,20 +920,25 @@ with right:
             x=alt.X("hours:Q",
                     title="Hours since admission",
                     scale=alt.Scale(domain=[0, horizon_hours]),
-                    axis=alt.Axis(values=tick_vals)),
-            y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
+                    axis=alt.Axis(values=tick_vals, labelFontSize=11, titleFontSize=12)),
+            y=alt.Y("value:Q",
+                    title="Creatinine (mg/dL)",
+                    axis=alt.Axis(labelFontSize=11, titleFontSize=12)),
             tooltip=[
                 alt.Tooltip("timestamp:T", title="Time"),
                 alt.Tooltip("hours:Q", title="Hours since admission", format=".1f"),
                 alt.Tooltip("value:Q", title="Creatinine (mg/dL)", format=".2f"),
                 alt.Tooltip("kind:N", title="Measurement type")
             ]
+        ).properties(
+            width="container"
+        ).configure_axis(
+            labelFontSize=11,
+            titleFontSize=12
         )
         st.altair_chart(line, use_container_width=True)
     else:
         st.warning("No creatinine values available for this case.")
-
-    st.markdown("---")
 
     # ======== OPTIONAL: Additional Lab Values ========
     with st.expander("**📊 Additional Lab Values**", expanded=False):
