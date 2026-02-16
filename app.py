@@ -878,8 +878,6 @@ with right:
     # -------- Tab 0: Creatinine --------
     with tabs[0]:
         st.markdown("**Serum Creatinine (mg/dL)**")
-        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
-        tick_vals = list(np.arange(0, max_tick + 1, 24))
         scr_data = lab_groups['scr']
         scr_data = lab_groups['scr'].sort_values("timestamp")
         
@@ -934,7 +932,7 @@ with right:
             chart = alt.Chart(uo_data).mark_line(point=True).encode(
                 x=alt.X("hours:Q",
                         title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        scale=alt.Scale(domain=[0, horizon_hours or max_tick]),
                         axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="Urine Output (mL)"),
                 color=alt.Color("source:N", legend=alt.Legend(title="Source")),
@@ -959,7 +957,7 @@ with right:
             chart = alt.Chart(bp_data).mark_line(point=True).encode(
                 x=alt.X("hours:Q",
                         title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        scale=alt.Scale(domain=[0, horizon_hours or max_tick]),
                         axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="Blood Pressure (mmHg)"),
                 color=alt.Color("bp_type:N", 
@@ -983,7 +981,7 @@ with right:
             chart = alt.Chart(temp_data).mark_line(point=True, color='#f97316').encode(
                 x=alt.X("hours:Q",
                         title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        scale=alt.Scale(domain=[0, horizon_hours or max_tick]),
                         axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title=f"Temperature ({temp_data['unit'].iloc[0] if len(temp_data) > 0 else ''})"),
                 tooltip=["timestamp:T", "hours:Q", "value:Q", "unit:N"]
@@ -1003,7 +1001,7 @@ with right:
             chart = alt.Chart(k_data).mark_line(point=True, color='#8b5cf6').encode(
                 x=alt.X("hours:Q",
                         title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        scale=alt.Scale(domain=[0, horizon_hours or max_tick]),
                         axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="Potassium (mEq/L)"),
                 tooltip=["timestamp:T", "hours:Q", "value:Q"]
@@ -1023,7 +1021,7 @@ with right:
             chart = alt.Chart(bun_data).mark_line(point=True, color='#06b6d4').encode(
                 x=alt.X("hours:Q",
                         title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        scale=alt.Scale(domain=[0, horizon_hours or max_tick]),
                         axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="BUN (mg/dL)"),
                 tooltip=["timestamp:T", "hours:Q", "value:Q"]
