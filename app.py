@@ -862,29 +862,67 @@ with right:
     
     # Create tabs for each lab type
     tabs = st.tabs([
+        "Timeline",
         "Creatinine",
-        "Urine Output", 
+        "Urine Output",
         "Blood Pressure",
         "Temperature",
         "Potassium",
         "BUN"
     ])
-    
+
     # Build intervals for shading (ED/ICU periods)
     intervals_df, horizon_hours = _build_intervals_hours(
         admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
     )
-    
-    # -------- Tab 0: Creatinine --------
+
+    # Compute unified x-axis
+    if horizon_hours:
+        max_tick = int(np.ceil(horizon_hours / 24.0) * 24)
+    else:
+        max_tick = 168
+
+    tick_vals = list(np.arange(0, max_tick + 1, 24))
+
+    # -------- Tab 0: Timeline --------
     with tabs[0]:
+        st.markdown("**Care Timeline (ED / ICU Periods)**")
+
+        if not intervals_df.empty and horizon_hours:
+            timeline_chart = alt.Chart(intervals_df).mark_bar(size=40).encode(
+                x=alt.X("start:Q",
+                        scale=alt.Scale(domain=[0, max_tick]),
+                        axis=alt.Axis(values=tick_vals),
+                        title="Hours since admission"),
+                x2="end:Q",
+                y=alt.value(20),  # single horizontal band
+                color=alt.Color(
+                    "label:N",
+                    legend=alt.Legend(title="Care Setting"),
+                    scale=alt.Scale(
+                        domain=["ED", "ICU"],
+                        range=["#fde68a", "#bfdbfe"]
+                    )
+                ),
+                tooltip=[
+                    alt.Tooltip("label:N", title="Care setting"),
+                    alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
+                    alt.Tooltip("end:Q", format=".1f", title="End (hr)")
+                ]
+            ).properties(height=120)
+
+            st.altair_chart(timeline_chart, use_container_width=True)
+        else:
+            st.info("No ED/ICU timing information available.")
+
+    # -------- Tab 0: Creatinine --------
+    with tabs[1]:
         st.markdown("**Serum Creatinine (mg/dL)**")
         scr_data = lab_groups['scr'].sort_values("timestamp")
         
         if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
-            # Calculate x-axis range
-            max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
-            tick_vals = list(np.arange(0, max_tick + 1, 24))
-            
+
+
             # Main line chart
             line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
                 x=alt.X("hours:Q",
@@ -899,29 +937,13 @@ with right:
                     alt.Tooltip("kind:N", title="Measurement type")
                 ]
             )
-            
-            # Add shading for ED/ICU if available
-            if not intervals_df.empty:
-                shade =  alt.Chart(intervals_df).mark_rect(opacity=0.2).encode(
-    x="start:Q", x2="end:Q",
-    color=alt.Color("label:N",
-                    legend=alt.Legend(title="Care setting"),
-                    scale=alt.Scale(domain=["ED", "ICU"],
-                                   range=["#fde68a", "#bfdbfe"])),
-    tooltip=alt.value(None)  # ADD THIS LINE
-)
-                st.altair_chart(alt.layer(shade, line).resolve_scale(color='independent'), 
-                              use_container_width=True)
-            else:
-                st.altair_chart(line, use_container_width=True)
+            st.altair_chart(line, use_container_width=True)
         else:
             st.warning("No creatinine values available for this case.")
     
     # -------- Tab 1: Urine Output --------
-    with tabs[1]:
+    with tabs[2]:
         st.markdown("**Urine Output (mL)**")
-        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
-        tick_vals = list(np.arange(0, max_tick + 1, 24))
         uo_data = lab_groups['uo'].sort_values("timestamp")
         
         if not uo_data.empty and pd.notna(admit_ts) and uo_data["hours"].notna().any():
@@ -942,10 +964,8 @@ with right:
             st.warning("No urine output values available.")
     
     # -------- Tab 2: Blood Pressure --------
-    with tabs[2]:
+    with tabs[3]:
         st.markdown("**Blood Pressure (mmHg)**")
-        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
-        tick_vals = list(np.arange(0, max_tick + 1, 24))
         bp_data = lab_groups['bp'].sort_values("timestamp")
         
         if not bp_data.empty and pd.notna(admit_ts) and bp_data["hours"].notna().any():
@@ -970,10 +990,8 @@ with right:
             st.warning("No blood pressure values available.")
     
     # -------- Tab 3: Temperature --------
-    with tabs[3]:
+    with tabs[4]:
         st.markdown("**Temperature (°C or °F)**")
-        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
-        tick_vals = list(np.arange(0, max_tick + 1, 24))
         temp_data = lab_groups['temp'].sort_values("timestamp")
         
         if not temp_data.empty and pd.notna(admit_ts) and temp_data["hours"].notna().any():
@@ -990,10 +1008,8 @@ with right:
             st.warning("No temperature values available.")
     
     # -------- Tab 4: Potassium --------
-    with tabs[4]:
+    with tabs[5]:
         st.markdown("**Potassium (mEq/L)**")
-        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
-        tick_vals = list(np.arange(0, max_tick + 1, 24))
         k_data = lab_groups['potassium'].sort_values("timestamp")
         
         if not k_data.empty and pd.notna(admit_ts) and k_data["hours"].notna().any():
@@ -1010,10 +1026,8 @@ with right:
             st.warning("No potassium values available.")
     
     # -------- Tab 5: BUN --------
-    with tabs[5]:
+    with tabs[6]:
         st.markdown("**BUN (mg/dL)**")
-        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
-        tick_vals = list(np.arange(0, max_tick + 1, 24))
         bun_data = lab_groups['bun'].sort_values("timestamp")
         
         if not bun_data.empty and pd.notna(admit_ts) and bun_data["hours"].notna().any():
