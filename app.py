@@ -848,7 +848,7 @@ with left:
         inline_highlighter(summary, case_id=case_id, step_key="step2", height=700)
 
 with right:
-    st.markdown("**Lab Values & Vitals**")
+    st.markdown("## Lab Values & Vitals")
 
     # Get patient blurb
     blurb = make_patient_blurb(age, gender, weight)
