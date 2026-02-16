@@ -873,17 +873,18 @@ with right:
     # ======== ALWAYS SHOW: Timeline ========
     # ======== ALWAYS SHOW: Timeline ========
     # ======== ALWAYS SHOW: Timeline ========
+    # ======== ALWAYS SHOW: Timeline ========
     st.markdown("**Care Timeline (ED / ICU Periods)**")
     if not intervals_df.empty and horizon_hours:
-        timeline_chart = alt.Chart(intervals_df).mark_bar(size=30).encode(
+        timeline_chart = alt.Chart(intervals_df).mark_bar(size=25).encode(
             x=alt.X("start:Q",
                     scale=alt.Scale(domain=[0, horizon_hours]),
-                    axis=alt.Axis(values=tick_vals, labelAngle=0, orient="bottom"),
+                    axis=alt.Axis(values=tick_vals, labelAngle=0),
                     title="Hours since admission"),
             x2="end:Q",
             y=alt.Y("label:N",
-                    axis=None,
-                    scale=alt.Scale(paddingInner=0.3, paddingOuter=0.2)),
+                    axis=alt.Axis(title=None, labels=False, ticks=False, domain=False),
+                    scale=alt.Scale(paddingInner=0.5)),
             color=alt.Color(
                 "label:N",
                 legend=alt.Legend(title="Care Setting", orient="top"),
@@ -897,8 +898,9 @@ with right:
                 alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
                 alt.Tooltip("end:Q", format=".1f", title="End (hr)")
             ]
-        ).properties(height=130).configure_view(
-            strokeWidth=0
+        ).properties(height=100).configure_view(strokeWidth=0).configure_axis(
+            labelFontSize=11,
+            titleFontSize=12
         )
         st.altair_chart(timeline_chart, use_container_width=True)
     else:
