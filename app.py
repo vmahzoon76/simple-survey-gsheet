@@ -872,6 +872,7 @@ with right:
 
     # ======== ALWAYS SHOW: Timeline ========
     # ======== ALWAYS SHOW: Timeline ========
+    # ======== ALWAYS SHOW: Timeline ========
     st.markdown("**Care Timeline (ED / ICU Periods)**")
     if not intervals_df.empty and horizon_hours:
         timeline_chart = alt.Chart(intervals_df).mark_bar(size=25).encode(
@@ -881,7 +882,7 @@ with right:
                     title="Hours since admission"),
             x2="end:Q",
             y=alt.Y("label:N",
-                    axis=alt.Axis(title="", labels=False, ticks=False, domain=False),
+                    axis=alt.Axis(title=" ", labels=False, ticks=False, domain=False, titleFontSize=12),
                     scale=alt.Scale(paddingInner=0.5)),
             color=alt.Color(
                 "label:N",
