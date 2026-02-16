@@ -893,7 +893,7 @@ with right:
                 alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
                 alt.Tooltip("end:Q", format=".1f", title="End (hr)")
             ]
-        ).properties(height=80)
+        ).properties(height=100)
         st.altair_chart(timeline_chart, use_container_width=True)
     else:
         st.info("No ED/ICU timing information available.")
