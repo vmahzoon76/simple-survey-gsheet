@@ -897,7 +897,7 @@ with right:
                 alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
                 alt.Tooltip("end:Q", format=".1f", title="End (hr)")
             ]
-        ).properties(height=120).configure_view(
+        ).properties(height=130).configure_view(
             strokeWidth=0
         )
         st.altair_chart(timeline_chart, use_container_width=True)
