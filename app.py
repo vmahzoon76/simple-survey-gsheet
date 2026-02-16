@@ -859,7 +859,7 @@ st.markdown(f"### {case_id} — {title}")
 left, right = st.columns([1, 1], gap="large")
 
 with left:
-    st.markdown("**Discharge Summary (highlight directly in the text below)**")
+    st.markdown("## Discharge Summary")
     if st.session_state.step == 1:
         inline_highlighter(summary, case_id=case_id, step_key="step1", height=700)
     else:
