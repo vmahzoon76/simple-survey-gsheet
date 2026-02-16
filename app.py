@@ -954,7 +954,6 @@ with right:
                 size=70,
                 filled=True
             ).encode(
-                (
                 x=alt.X("hours:Q",
                         title="Hours since admission",
                         scale=alt.Scale(domain=[0,  horizon_hours]),
