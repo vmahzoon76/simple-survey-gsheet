@@ -1079,8 +1079,8 @@ with right:
                     y=alt.Y("value:Q", title="Lasix Dose (mg)"),
                     color=alt.value("#10b981"),  # Green color
                     tooltip=[
-                        alt.Tooltip("start time:T", title="Start Time"),
-                        alt.Tooltip("end time:T", title="End Time"),
+                        alt.Tooltip("starttime:T", title="Start Time"),
+                        alt.Tooltip("endtime:T", title="End Time"),
                         alt.Tooltip("start_hours:Q", title="Hours since admission", format=".1f"),
                         alt.Tooltip("duration_hours:Q", title="Duration (hr)", format=".1f"),
                         alt.Tooltip("value:Q", title="Dose (mg)", format=".0f")
@@ -1286,10 +1286,10 @@ if st.session_state.step == 1:
 #         time.sleep(0.18)
 #         _rerun()
 
-# with c3:
-#     if st.button("Skip ▶"):
-#         st.session_state.case_idx += 1
-#         st.session_state.jump_to_top = True
-#         _scroll_top()
-#         time.sleep(0.18)
-#         _rerun()
+with c3:
+    if st.button("Skip ▶"):
+        st.session_state.case_idx += 1
+        st.session_state.jump_to_top = True
+        _scroll_top()
+        time.sleep(0.18)
+        _rerun()
