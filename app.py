@@ -1136,7 +1136,7 @@ if st.session_state.step == 1:
 
 
         q_aki_own = st.radio(
-            "Based on the discharge summary, do you personally think the patient had AKI?",
+            "Based on the discharge summary and structured data, do you personally think the patient had AKI?",
             [
                 "Yes",
                 "No"
