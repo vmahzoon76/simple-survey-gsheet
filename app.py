@@ -1275,16 +1275,16 @@ if st.session_state.step == 1:
 
 
 
-# # Navigation helpers
-# c1, c2, c3 = st.columns(3)
-# with c1:
-#     if st.button("◀ Back"):
-#         if st.session_state.case_idx > 0:
-#             st.session_state.case_idx -= 1
-#         st.session_state.jump_to_top = True
-#         _scroll_top()
-#         time.sleep(0.18)
-#         _rerun()
+# Navigation helpers
+c1, c2, c3 = st.columns(3)
+with c1:
+    if st.button("◀ Back"):
+        if st.session_state.case_idx > 0:
+            st.session_state.case_idx -= 1
+        st.session_state.jump_to_top = True
+        _scroll_top()
+        time.sleep(0.18)
+        _rerun()
 
 with c3:
     if st.button("Skip ▶"):
