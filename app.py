@@ -164,6 +164,14 @@ def group_labs_by_category(labs_df):
     
     # BUN
     bun_kinds = ['bun']
+
+    # Clean non-numeric values from all categories
+    for key in ['bp', 'uo', 'temp', 'scr', 'potassium', 'bun']:
+        if key in locals():
+            df = locals()[key]
+            df['value'] = pd.to_numeric(df['value'], errors='coerce')
+            df = df.dropna(subset=['value'])
+            locals()[key] = df
     
     return {
         'bp': labs_df[labs_df['_kind_lower'].isin(bp_kinds)].copy(),
@@ -864,7 +872,10 @@ with right:
     # -------- Tab 0: Creatinine --------
     with tabs[0]:
         st.markdown("**Serum Creatinine (mg/dL)**")
+        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
+        tick_vals = list(np.arange(0, max_tick + 1, 24))
         scr_data = lab_groups['scr']
+        scr_data = lab_groups['scr'].sort_values("timestamp")
         
         if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
             # Calculate x-axis range
@@ -878,7 +889,12 @@ with right:
                         scale=alt.Scale(domain=[0, horizon_hours or max_tick]),
                         axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
-                tooltip=["timestamp:T", "hours:Q", "value:Q", "kind:N"]
+                tooltip=[
+                    alt.Tooltip("timestamp:T", title="Time"),
+                    alt.Tooltip("hours:Q", title="Hours since admission", format=".1f"),
+                    alt.Tooltip("value:Q", title="Creatinine (mg/dL)", format=".2f"),
+                    alt.Tooltip("kind:N", title="Measurement type")
+                ]
             )
             
             # Add shading for ED/ICU if available
@@ -900,16 +916,20 @@ with right:
     # -------- Tab 1: Urine Output --------
     with tabs[1]:
         st.markdown("**Urine Output (mL)**")
+        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
+        tick_vals = list(np.arange(0, max_tick + 1, 24))
         uo_data = lab_groups['uo']
+        uo_data = lab_groups['uo'].sort_values("timestamp")
         
         if not uo_data.empty and pd.notna(admit_ts) and uo_data["hours"].notna().any():
             # Add source type for coloring different sources
             uo_data['source'] = uo_data['kind'].str.title()
             
             chart = alt.Chart(uo_data).mark_line(point=True).encode(
-                x=alt.X("hours:Q", 
-                       title="Hours since admission",
-                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                x=alt.X("hours:Q",
+                        title="Hours since admission",
+                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="Urine Output (mL)"),
                 color=alt.Color("source:N", legend=alt.Legend(title="Source")),
                 tooltip=["timestamp:T", "hours:Q", "value:Q", "source:N"]
@@ -921,7 +941,9 @@ with right:
     # -------- Tab 2: Blood Pressure --------
     with tabs[2]:
         st.markdown("**Blood Pressure (mmHg)**")
-        bp_data = lab_groups['bp']
+        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
+        tick_vals = list(np.arange(0, max_tick + 1, 24))
+        bp_data = lab_groups['bp'].sort_values("timestamp")
         
         if not bp_data.empty and pd.notna(admit_ts) and bp_data["hours"].notna().any():
             # Separate systolic, diastolic, mean
@@ -929,9 +951,10 @@ with right:
             bp_data['bp_type'] = bp_data['bp_type'].str.title()
             
             chart = alt.Chart(bp_data).mark_line(point=True).encode(
-                x=alt.X("hours:Q", 
-                       title="Hours since admission",
-                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                x=alt.X("hours:Q",
+                        title="Hours since admission",
+                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="Blood Pressure (mmHg)"),
                 color=alt.Color("bp_type:N", 
                               legend=alt.Legend(title="BP Type"),
@@ -946,13 +969,16 @@ with right:
     # -------- Tab 3: Temperature --------
     with tabs[3]:
         st.markdown("**Temperature (°C or °F)**")
-        temp_data = lab_groups['temp']
+        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
+        tick_vals = list(np.arange(0, max_tick + 1, 24))
+        temp_data = lab_groups['temp'].sort_values("timestamp")
         
         if not temp_data.empty and pd.notna(admit_ts) and temp_data["hours"].notna().any():
             chart = alt.Chart(temp_data).mark_line(point=True, color='#f97316').encode(
-                x=alt.X("hours:Q", 
-                       title="Hours since admission",
-                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                x=alt.X("hours:Q",
+                        title="Hours since admission",
+                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title=f"Temperature ({temp_data['unit'].iloc[0] if len(temp_data) > 0 else ''})"),
                 tooltip=["timestamp:T", "hours:Q", "value:Q", "unit:N"]
             )
@@ -963,13 +989,16 @@ with right:
     # -------- Tab 4: Potassium --------
     with tabs[4]:
         st.markdown("**Potassium (mEq/L)**")
-        k_data = lab_groups['potassium']
+        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
+        tick_vals = list(np.arange(0, max_tick + 1, 24))
+        k_data = lab_groups['potassium'].sort_values("timestamp")
         
         if not k_data.empty and pd.notna(admit_ts) and k_data["hours"].notna().any():
             chart = alt.Chart(k_data).mark_line(point=True, color='#8b5cf6').encode(
-                x=alt.X("hours:Q", 
-                       title="Hours since admission",
-                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                x=alt.X("hours:Q",
+                        title="Hours since admission",
+                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="Potassium (mEq/L)"),
                 tooltip=["timestamp:T", "hours:Q", "value:Q"]
             )
@@ -980,13 +1009,16 @@ with right:
     # -------- Tab 5: BUN --------
     with tabs[5]:
         st.markdown("**BUN (mg/dL)**")
-        bun_data = lab_groups['bun']
+        max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
+        tick_vals = list(np.arange(0, max_tick + 1, 24))
+        bun_data = lab_groups['bun'].sort_values("timestamp")
         
         if not bun_data.empty and pd.notna(admit_ts) and bun_data["hours"].notna().any():
             chart = alt.Chart(bun_data).mark_line(point=True, color='#06b6d4').encode(
-                x=alt.X("hours:Q", 
-                       title="Hours since admission",
-                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                x=alt.X("hours:Q",
+                        title="Hours since admission",
+                        scale=alt.Scale(domain=[0, horizon_hours or 168]),
+                        axis=alt.Axis(values=tick_vals)),
                 y=alt.Y("value:Q", title="BUN (mg/dL)"),
                 tooltip=["timestamp:T", "hours:Q", "value:Q"]
             )
