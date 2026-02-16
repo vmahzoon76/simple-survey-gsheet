@@ -837,8 +837,8 @@ case_inputs = inputs[inputs["case_id"].astype(str) == case_id].copy()
 
 # Compute hours since admission for inputs
 if pd.notna(admit_ts):
-    case_inputs["start_hours"] = (case_inputs["start time"] - admit_ts).dt.total_seconds() / 3600.0
-    case_inputs["end_hours"] = (case_inputs["end time"] - admit_ts).dt.total_seconds() / 3600.0
+    case_inputs["start_hours"] = (case_inputs["starttime"] - admit_ts).dt.total_seconds() / 3600.0
+    case_inputs["end_hours"] = (case_inputs["endtime"] - admit_ts).dt.total_seconds() / 3600.0
 else:
     case_inputs["start_hours"] = pd.NA
     case_inputs["end_hours"] = pd.NA
