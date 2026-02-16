@@ -1116,32 +1116,30 @@ st.markdown("---")
 if st.session_state.step == 1:
     st.subheader("Questions")
 
-    st.markdown(
-    "Please remember to **highlight** (using the highlight button above the discharge summary) parts of the note which provide positive or negative evidence about AKI."
-)
-
-    with st.form("step1_form", clear_on_submit=False):
-        q_aki = st.radio(
-            "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
-            ["Yes — explicitly mentioned", "Yes — could be implied", "No"],
-            horizontal=False,
-            index=None,
-            key=f"q1_aki_{case_id}"
-)
-        q_rationale_writer = st.text_area(
-            "Please provide a brief rationale for your assessment.",
-            height=140,
-            key=f"q1_rationale_writer_{case_id}"
-        )
+#     st.markdown(
+#     "Please remember to **highlight** (using the highlight button above the discharge summary) parts of the note which provide positive or negative evidence about AKI."
+# )
+#
+#     with st.form("step1_form", clear_on_submit=False):
+#         q_aki = st.radio(
+#             "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
+#             ["Yes — explicitly mentioned", "Yes — could be implied", "No"],
+#             horizontal=False,
+#             index=None,
+#             key=f"q1_aki_{case_id}"
+# )
+#         q_rationale_writer = st.text_area(
+#             "Please provide a brief rationale for your assessment.",
+#             height=140,
+#             key=f"q1_rationale_writer_{case_id}"
+#         )
 
 
         q_aki_own = st.radio(
             "Based on the discharge summary, do you personally think the patient had AKI?",
             [
-                "Yes (almost certainly)",
-                "Likely yes (some information is missing, but my guess is yes)",
-                "Likely no (some information is missing, but my guess is no)",
-                "No (almost certainly)"
+                "Yes",
+                "No"
             ],
             horizontal=False,
             index=None,
@@ -1150,18 +1148,9 @@ if st.session_state.step == 1:
 
 
 
-        q_surprise = st.radio(
-            "How surprised would you be to learn that the patient had AKI during the stay?",
-            ["Not surprised", "Somewhat surprised", "Very surprised"],
-            horizontal=True,
-            index=None,
-            key=f"q1_surprise_{case_id}"
-        )
-
-
         
         q_rationale = st.text_area(
-            "Please provide a brief rationale for your assessment. Please also highlight in the note any specific text that impacted your conclusion.",
+            "Please provide a brief rationale for your assessment",
             height=140, key=f"q1_rationale_{case_id}"
         )
 
@@ -1169,48 +1158,7 @@ if st.session_state.step == 1:
         # If YES → show extra AKI-related questions
         
         
-        st.markdown(
-    "If there is a chance that the **patient had AKI**, please answer the following questions. If not, **no need to select any**."
-)
 
-   
-
-        # If YES → show extra AKI-related questions
-       
-        
-        
-        aki_et = st.pills(
-            "Was there evidence for the etiology of AKI? (Select all that apply)",
-            options=[
-                "Decreased perfusion (ATN or prerenal)",
-                "Acute glomerulonephritis, vasculitis, interstitial nephritis, thrombotic microangiopathy",
-                "Obstruction",
-                "Other",
-                "Not enough data",
-            ],
-            selection_mode="multi",
-            key=f"q1_aki_et_{case_id}",
-        )
-    
-        q_onset = st.pills(
-        "Did the patient have it at admission or develop it during the stay?",
-        options=[
-            "Had it at admission",
-            "Developed it during stay",
-        ],
-        selection_mode="single",
-        key=f"q1_onset_{case_id}",
-)
-
-        q_treated = st.pills(
-    "Is there any evidence in the summary that the patient might have been treated for AKI?",
-    options=[
-        "Yes",
-        "No",
-    ],
-    selection_mode="single",
-    key=f"q1_treated_{case_id}",
-)
 
 
         
@@ -1243,15 +1191,15 @@ if st.session_state.step == 1:
                 "reviewer_id": st.session_state.reviewer_id,
                 "case_id": case_id,
                 "step": 1,
-                "aki": q_aki,
-                "highlight_html": hl_html,
-                "rationale_aki": q_rationale_writer,
-                "aki_etiology": "; ".join(aki_et),
-                "aki_own": q_aki_own, 
+                # "aki": q_aki,
+                # "highlight_html": hl_html,
+                #"rationale_aki": q_rationale_writer,
+                #"aki_etiology": "; ".join(aki_et),
+                "aki_own": q_aki_own,
                 "rational_aki_own": q_rationale,
-                "aki_onset": q_onset,
-                "aki_surprise":q_surprise,
-                "treat_aki":q_treated
+                # "aki_onset": q_onset,
+                # "aki_surprise":q_surprise,
+                # "treat_aki":q_treated
 
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
