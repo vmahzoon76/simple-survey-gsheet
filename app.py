@@ -731,7 +731,7 @@ if "timestamp" in labs.columns:
     labs["timestamp"] = pd.to_datetime(labs["timestamp"], errors="coerce")
 
 # Add this for inputs:
-for _c in ["start time", "end time"]:
+for _c in ["starttime", "endtime"]:
     if _c in inputs.columns:
         inputs[_c] = pd.to_datetime(inputs[_c], errors="coerce")
 
