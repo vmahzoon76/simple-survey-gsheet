@@ -878,7 +878,6 @@ with right:
     # -------- Tab 0: Creatinine --------
     with tabs[0]:
         st.markdown("**Serum Creatinine (mg/dL)**")
-        scr_data = lab_groups['scr']
         scr_data = lab_groups['scr'].sort_values("timestamp")
         
         if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
@@ -903,13 +902,14 @@ with right:
             
             # Add shading for ED/ICU if available
             if not intervals_df.empty:
-                shade = alt.Chart(intervals_df).mark_rect(opacity=0.2).encode(
-                    x="start:Q", x2="end:Q",
-                    color=alt.Color("label:N", 
-                                    legend=alt.Legend(title="Care setting"),
-                                    scale=alt.Scale(domain=["ED", "ICU"], 
-                                                   range=["#fde68a", "#bfdbfe"]))
-                )
+                shade =  alt.Chart(intervals_df).mark_rect(opacity=0.2).encode(
+    x="start:Q", x2="end:Q",
+    color=alt.Color("label:N",
+                    legend=alt.Legend(title="Care setting"),
+                    scale=alt.Scale(domain=["ED", "ICU"],
+                                   range=["#fde68a", "#bfdbfe"])),
+    tooltip=alt.value(None)  # ADD THIS LINE
+)
                 st.altair_chart(alt.layer(shade, line).resolve_scale(color='independent'), 
                               use_container_width=True)
             else:
@@ -922,7 +922,6 @@ with right:
         st.markdown("**Urine Output (mL)**")
         max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
         tick_vals = list(np.arange(0, max_tick + 1, 24))
-        uo_data = lab_groups['uo']
         uo_data = lab_groups['uo'].sort_values("timestamp")
         
         if not uo_data.empty and pd.notna(admit_ts) and uo_data["hours"].notna().any():
