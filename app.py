@@ -838,7 +838,7 @@ st.markdown(f"### {case_id} — {title}")
 
 
 # ================== Layout ==================
-left, right = st.columns([5, 4], gap="large")
+left, right = st.columns([1, 1], gap="large")
 
 with left:
     st.markdown("**Discharge Summary (highlight directly in the text below)**")
