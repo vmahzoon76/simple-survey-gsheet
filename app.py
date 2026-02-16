@@ -847,29 +847,15 @@ with left:
     else:
         inline_highlighter(summary, case_id=case_id, step_key="step2", height=700)
 
-
-
-
 with right:
     st.markdown("**Lab Values & Vitals**")
-    
+
     # Get patient blurb
     blurb = make_patient_blurb(age, gender, weight)
     st.markdown(f"> {blurb}")
-    
+
     # Group labs by category
     lab_groups = group_labs_by_category(case_labs)
-    
-    # Create tabs for each lab type
-    tabs = st.tabs([
-        "Timeline",
-        "Creatinine",
-        "Urine Output",
-        "Blood Pressure",
-        "Temperature",
-        "Potassium",
-        "BUN"
-    ])
 
     # Build intervals for shading (ED/ICU periods)
     intervals_df, horizon_hours = _build_intervals_hours(
@@ -884,167 +870,170 @@ with right:
 
     tick_vals = list(np.arange(0, max_tick + 1, 24))
 
-    # -------- Tab 0: Timeline --------
-    with tabs[0]:
-        st.markdown("**Care Timeline (ED / ICU Periods)**")
+    # ======== ALWAYS SHOW: Timeline ========
+    st.markdown("**Care Timeline (ED / ICU Periods)**")
+    if not intervals_df.empty and horizon_hours:
+        timeline_chart = alt.Chart(intervals_df).mark_bar(size=40).encode(
+            x=alt.X("start:Q",
+                    scale=alt.Scale(domain=[0, horizon_hours]),
+                    axis=alt.Axis(values=tick_vals),
+                    title="Hours since admission"),
+            x2="end:Q",
+            y=alt.value(20),
+            color=alt.Color(
+                "label:N",
+                legend=alt.Legend(title="Care Setting"),
+                scale=alt.Scale(
+                    domain=["ED", "ICU"],
+                    range=["#fde68a", "#bfdbfe"]
+                )
+            ),
+            tooltip=[
+                alt.Tooltip("label:N", title="Care setting"),
+                alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
+                alt.Tooltip("end:Q", format=".1f", title="End (hr)")
+            ]
+        ).properties(height=80)
+        st.altair_chart(timeline_chart, use_container_width=True)
+    else:
+        st.info("No ED/ICU timing information available.")
 
-        if not intervals_df.empty and horizon_hours:
-            timeline_chart = alt.Chart(intervals_df).mark_bar(size=40).encode(
-                x=alt.X("start:Q",
-                        scale=alt.Scale(domain=[0, horizon_hours]),
-                        axis=alt.Axis(values=tick_vals),
-                        title="Hours since admission"),
-                x2="end:Q",
-                y=alt.value(20),  # single horizontal band
-                color=alt.Color(
-                    "label:N",
-                    legend=alt.Legend(title="Care Setting"),
-                    scale=alt.Scale(
-                        domain=["ED", "ICU"],
-                        range=["#fde68a", "#bfdbfe"]
-                    )
-                ),
-                tooltip=[
-                    alt.Tooltip("label:N", title="Care setting"),
-                    alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
-                    alt.Tooltip("end:Q", format=".1f", title="End (hr)")
-                ]
-            ).properties(height=120)
+    st.markdown("---")
 
-            st.altair_chart(timeline_chart, use_container_width=True)
-        else:
-            st.info("No ED/ICU timing information available.")
+    # ======== ALWAYS SHOW: Creatinine ========
+    st.markdown("**Serum Creatinine (mg/dL)**")
+    scr_data = lab_groups['scr'].sort_values("timestamp")
 
-    # -------- Tab 0: Creatinine --------
-    with tabs[1]:
-        st.markdown("**Serum Creatinine (mg/dL)**")
-        scr_data = lab_groups['scr'].sort_values("timestamp")
-        
-        if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
+    if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
+        line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
+            x=alt.X("hours:Q",
+                    title="Hours since admission",
+                    scale=alt.Scale(domain=[0, horizon_hours]),
+                    axis=alt.Axis(values=tick_vals)),
+            y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
+            tooltip=[
+                alt.Tooltip("timestamp:T", title="Time"),
+                alt.Tooltip("hours:Q", title="Hours since admission", format=".1f"),
+                alt.Tooltip("value:Q", title="Creatinine (mg/dL)", format=".2f"),
+                alt.Tooltip("kind:N", title="Measurement type")
+            ]
+        )
+        st.altair_chart(line, use_container_width=True)
+    else:
+        st.warning("No creatinine values available for this case.")
 
+    st.markdown("---")
 
-            # Main line chart
-            line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
-                x=alt.X("hours:Q",
-                        title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours]),
-                        axis=alt.Axis(values=tick_vals)),
-                y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
-                tooltip=[
-                    alt.Tooltip("timestamp:T", title="Time"),
-                    alt.Tooltip("hours:Q", title="Hours since admission", format=".1f"),
-                    alt.Tooltip("value:Q", title="Creatinine (mg/dL)", format=".2f"),
-                    alt.Tooltip("kind:N", title="Measurement type")
-                ]
-            )
-            st.altair_chart(line, use_container_width=True)
-        else:
-            st.warning("No creatinine values available for this case.")
-    
-    # -------- Tab 1: Urine Output --------
-    with tabs[2]:
-        st.markdown("**Urine Output (mL)**")
-        uo_data = lab_groups['uo'].sort_values("timestamp")
-        
-        if not uo_data.empty and pd.notna(admit_ts) and uo_data["hours"].notna().any():
-            # Add source type for coloring different sources
-            uo_data['source'] = uo_data['kind'].str.title()
+    # ======== OPTIONAL: Additional Lab Values ========
+    with st.expander("**📊 Additional Lab Values**", expanded=False):
+        tabs = st.tabs([
+            "Urine Output",
+            "Blood Pressure",
+            "Temperature",
+            "Potassium",
+            "BUN"
+        ])
 
-            chart = alt.Chart(uo_data).mark_point(
-                size=70,
-                filled=True
-            ).encode(
-                x=alt.X("hours:Q",
-                        title="Hours since admission",
-                        scale=alt.Scale(domain=[0,  horizon_hours]),
-                        axis=alt.Axis(values=tick_vals)),
-                y=alt.Y("value:Q", title="Urine Output (mL)"),
-                color=alt.Color("source:N", legend=alt.Legend(title="Source")),
-                tooltip=["timestamp:T", "hours:Q", "value:Q", "source:N"]
-            )
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.warning("No urine output values available.")
-    
-    # -------- Tab 2: Blood Pressure --------
-    with tabs[3]:
-        st.markdown("**Blood Pressure (mmHg)**")
-        bp_data = lab_groups['bp'].sort_values("timestamp")
-        
-        if not bp_data.empty and pd.notna(admit_ts) and bp_data["hours"].notna().any():
-            # Separate systolic, diastolic, mean
-            bp_data['bp_type'] = bp_data['kind'].str.extract(r'(systolic|diastolic|mean)', expand=False)
-            bp_data['bp_type'] = bp_data['bp_type'].str.title()
-            
-            chart = alt.Chart(bp_data).mark_line(point=True).encode(
-                x=alt.X("hours:Q",
-                        title="Hours since admission",
-                        scale=alt.Scale(domain=[0,  horizon_hours]),
-                        axis=alt.Axis(values=tick_vals)),
-                y=alt.Y("value:Q", title="Blood Pressure (mmHg)"),
-                color=alt.Color("bp_type:N", 
-                              legend=alt.Legend(title="BP Type"),
-                              scale=alt.Scale(domain=['Systolic', 'Diastolic', 'Mean'],
-                                            range=['#dc2626', '#2563eb', '#059669'])),
-                tooltip=["timestamp:T", "hours:Q", "value:Q", "bp_type:N", "kind:N"]
-            )
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.warning("No blood pressure values available.")
-    
-    # -------- Tab 3: Temperature --------
-    with tabs[4]:
-        st.markdown("**Temperature (°C or °F)**")
-        temp_data = lab_groups['temp'].sort_values("timestamp")
-        
-        if not temp_data.empty and pd.notna(admit_ts) and temp_data["hours"].notna().any():
-            chart = alt.Chart(temp_data).mark_line(point=True, color='#f97316').encode(
-                x=alt.X("hours:Q",
-                        title="Hours since admission",
-                        scale=alt.Scale(domain=[0,  horizon_hours]),
-                        axis=alt.Axis(values=tick_vals)),
-                y=alt.Y("value:Q", title=f"Temperature ({temp_data['unit'].iloc[0] if len(temp_data) > 0 else ''})"),
-                tooltip=["timestamp:T", "hours:Q", "value:Q", "unit:N"]
-            )
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.warning("No temperature values available.")
-    
-    # -------- Tab 4: Potassium --------
-    with tabs[5]:
-        st.markdown("**Potassium (mEq/L)**")
-        k_data = lab_groups['potassium'].sort_values("timestamp")
-        
-        if not k_data.empty and pd.notna(admit_ts) and k_data["hours"].notna().any():
-            chart = alt.Chart(k_data).mark_line(point=True, color='#8b5cf6').encode(
-                x=alt.X("hours:Q",
-                        title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours]),
-                        axis=alt.Axis(values=tick_vals)),
-                y=alt.Y("value:Q", title="Potassium (mEq/L)"),
-                tooltip=["timestamp:T", "hours:Q", "value:Q"]
-            )
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.warning("No potassium values available.")
-    
-    # -------- Tab 5: BUN --------
-    with tabs[6]:
-        st.markdown("**BUN (mg/dL)**")
-        bun_data = lab_groups['bun'].sort_values("timestamp")
-        
-        if not bun_data.empty and pd.notna(admit_ts) and bun_data["hours"].notna().any():
-            chart = alt.Chart(bun_data).mark_line(point=True, color='#06b6d4').encode(
-                x=alt.X("hours:Q",
-                        title="Hours since admission",
-                        scale=alt.Scale(domain=[0, horizon_hours]),
-                        axis=alt.Axis(values=tick_vals)),
-                y=alt.Y("value:Q", title="BUN (mg/dL)"),
-                tooltip=["timestamp:T", "hours:Q", "value:Q"]
-            )
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.warning("No BUN values available.")
+        # Tab 0: Urine Output
+        with tabs[0]:
+            st.markdown("**Urine Output (mL)**")
+            uo_data = lab_groups['uo'].sort_values("timestamp")
+
+            if not uo_data.empty and pd.notna(admit_ts) and uo_data["hours"].notna().any():
+                uo_data['source'] = uo_data['kind'].str.title()
+                chart = alt.Chart(uo_data).mark_point(size=70, filled=True).encode(
+                    x=alt.X("hours:Q",
+                            title="Hours since admission",
+                            scale=alt.Scale(domain=[0, horizon_hours]),
+                            axis=alt.Axis(values=tick_vals)),
+                    y=alt.Y("value:Q", title="Urine Output (mL)"),
+                    color=alt.Color("source:N", legend=alt.Legend(title="Source")),
+                    tooltip=["timestamp:T", "hours:Q", "value:Q", "source:N"]
+                )
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.warning("No urine output values available.")
+
+        # Tab 1: Blood Pressure
+        with tabs[1]:
+            st.markdown("**Blood Pressure (mmHg)**")
+            bp_data = lab_groups['bp'].sort_values("timestamp")
+
+            if not bp_data.empty and pd.notna(admit_ts) and bp_data["hours"].notna().any():
+                bp_data['bp_type'] = bp_data['kind'].str.extract(r'(systolic|diastolic|mean)', expand=False)
+                bp_data['bp_type'] = bp_data['bp_type'].str.title()
+
+                chart = alt.Chart(bp_data).mark_line(point=True).encode(
+                    x=alt.X("hours:Q",
+                            title="Hours since admission",
+                            scale=alt.Scale(domain=[0, horizon_hours]),
+                            axis=alt.Axis(values=tick_vals)),
+                    y=alt.Y("value:Q", title="Blood Pressure (mmHg)"),
+                    color=alt.Color("bp_type:N",
+                                    legend=alt.Legend(title="BP Type"),
+                                    scale=alt.Scale(domain=['Systolic', 'Diastolic', 'Mean'],
+                                                    range=['#dc2626', '#2563eb', '#059669'])),
+                    tooltip=["timestamp:T", "hours:Q", "value:Q", "bp_type:N", "kind:N"]
+                )
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.warning("No blood pressure values available.")
+
+        # Tab 2: Temperature
+        with tabs[2]:
+            st.markdown("**Temperature (°C or °F)**")
+            temp_data = lab_groups['temp'].sort_values("timestamp")
+
+            if not temp_data.empty and pd.notna(admit_ts) and temp_data["hours"].notna().any():
+                chart = alt.Chart(temp_data).mark_line(point=True, color='#f97316').encode(
+                    x=alt.X("hours:Q",
+                            title="Hours since admission",
+                            scale=alt.Scale(domain=[0, horizon_hours]),
+                            axis=alt.Axis(values=tick_vals)),
+                    y=alt.Y("value:Q",
+                            title=f"Temperature ({temp_data['unit'].iloc[0] if len(temp_data) > 0 else ''})"),
+                    tooltip=["timestamp:T", "hours:Q", "value:Q", "unit:N"]
+                )
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.warning("No temperature values available.")
+
+        # Tab 3: Potassium
+        with tabs[3]:
+            st.markdown("**Potassium (mEq/L)**")
+            k_data = lab_groups['potassium'].sort_values("timestamp")
+
+            if not k_data.empty and pd.notna(admit_ts) and k_data["hours"].notna().any():
+                chart = alt.Chart(k_data).mark_line(point=True, color='#8b5cf6').encode(
+                    x=alt.X("hours:Q",
+                            title="Hours since admission",
+                            scale=alt.Scale(domain=[0, horizon_hours]),
+                            axis=alt.Axis(values=tick_vals)),
+                    y=alt.Y("value:Q", title="Potassium (mEq/L)"),
+                    tooltip=["timestamp:T", "hours:Q", "value:Q"]
+                )
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.warning("No potassium values available.")
+
+        # Tab 4: BUN
+        with tabs[4]:
+            st.markdown("**BUN (mg/dL)**")
+            bun_data = lab_groups['bun'].sort_values("timestamp")
+
+            if not bun_data.empty and pd.notna(admit_ts) and bun_data["hours"].notna().any():
+                chart = alt.Chart(bun_data).mark_line(point=True, color='#06b6d4').encode(
+                    x=alt.X("hours:Q",
+                            title="Hours since admission",
+                            scale=alt.Scale(domain=[0, horizon_hours]),
+                            axis=alt.Axis(values=tick_vals)),
+                    y=alt.Y("value:Q", title="BUN (mg/dL)"),
+                    tooltip=["timestamp:T", "hours:Q", "value:Q"]
+                )
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.warning("No BUN values available.")
+
 
         
 
