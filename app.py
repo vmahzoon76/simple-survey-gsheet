@@ -1061,49 +1061,49 @@ with right:
 
                 # Tab 5: Lasix
         # Tab 5: Lasix
+        # Tab 5: Lasix
         with tabs[5]:
             st.markdown("**Lasix Administration**")
             lasix_data = case_inputs[
                 case_inputs["unit"].astype(str).str.lower().isin(["mg", "milligram"])].copy()
 
             if not lasix_data.empty and pd.notna(admit_ts) and lasix_data["start_hours"].notna().any():
-                # Calculate duration for each dose
-                lasix_data["duration_hours"] = lasix_data["end_hours"] - lasix_data["start_hours"]
-
-                # Filter out zero or negative duration doses
-                lasix_data = lasix_data[lasix_data["duration_hours"] > 0]
+                # Use start_hours as the time point for each dose
+                lasix_data["value_numeric"] = pd.to_numeric(lasix_data["value"], errors='coerce')
+                lasix_data = lasix_data.dropna(subset=['value_numeric', 'start_hours'])
 
                 if lasix_data.empty:
-                    st.warning("Lasix doses found but all have invalid durations.")
+                    st.warning("Lasix doses found but values are invalid.")
                 else:
-                    # Create bar chart with explicit height scale
-                    bars = alt.Chart(lasix_data).mark_bar(opacity=0.7, color="#10b981").encode(
+                    # Create chart with downward-pointing triangles (arrows)
+                    chart = alt.Chart(lasix_data).mark_point(
+                        shape='triangle-down',
+                        size=200,
+                        filled=True,
+                        color="#10b981"
+                    ).encode(
                         x=alt.X("start_hours:Q",
                                 title="Hours since admission",
                                 scale=alt.Scale(domain=[0, horizon_hours]),
                                 axis=alt.Axis(values=tick_vals)),
-                        x2="end_hours:Q",
-                        y=alt.Y("value:Q",
+                        y=alt.Y("value_numeric:Q",
                                 title="Lasix Dose (mg)",
-                                scale=alt.Scale(domain=[0, lasix_data["value"].max() * 1.1])),
+                                scale=alt.Scale(zero=True)),
                         tooltip=[
-                            alt.Tooltip("starttime:T", title="Start Time"),
-                            alt.Tooltip("endtime:T", title="End Time"),
+                            alt.Tooltip("starttime:T", title="Given at"),
                             alt.Tooltip("start_hours:Q", title="Hours since admission", format=".1f"),
-                            alt.Tooltip("duration_hours:Q", title="Duration (hr)", format=".1f"),
-                            alt.Tooltip("value:Q", title="Dose (mg)", format=".0f")
+                            alt.Tooltip("value_numeric:Q", title="Dose (mg)", format=".0f")
                         ]
                     ).properties(height=300)
 
-                    st.altair_chart(bars, use_container_width=True)
+                    st.altair_chart(chart, use_container_width=True)
 
                     # Show summary statistics
-                    total_dose = lasix_data["value"].sum()
+                    total_dose = lasix_data["value_numeric"].sum()
                     num_doses = len(lasix_data)
                     st.caption(f"Total: {total_dose:.0f} mg across {num_doses} dose(s)")
             else:
                 st.warning("No Lasix administration data available.")
-
 
         
 
