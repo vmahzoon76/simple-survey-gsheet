@@ -166,20 +166,26 @@ def group_labs_by_category(labs_df):
     bun_kinds = ['bun']
 
     # Clean non-numeric values from all categories
-    for key in ['bp', 'uo', 'temp', 'scr', 'potassium', 'bun']:
-        if key in locals():
-            df = locals()[key]
-            df['value'] = pd.to_numeric(df['value'], errors='coerce')
-            df = df.dropna(subset=['value'])
-            locals()[key] = df
-    
+
     return {
-        'bp': labs_df[labs_df['_kind_lower'].isin(bp_kinds)].copy(),
-        'uo': labs_df[labs_df['_kind_lower'].isin(uo_kinds)].copy(),
-        'temp': labs_df[labs_df['_kind_lower'].isin(temp_kinds)].copy(),
-        'scr': labs_df[labs_df['_kind_lower'].isin(scr_kinds)].copy(),
-        'potassium': labs_df[labs_df['_kind_lower'].isin(k_kinds)].copy(),
-        'bun': labs_df[labs_df['_kind_lower'].isin(bun_kinds)].copy()
+        'bp': labs_df[labs_df['_kind_lower'].isin(bp_kinds)].copy().assign(
+            value=lambda x: pd.to_numeric(x['value'], errors='coerce')
+        ).dropna(subset=['value']),
+        'uo': labs_df[labs_df['_kind_lower'].isin(uo_kinds)].copy().assign(
+            value=lambda x: pd.to_numeric(x['value'], errors='coerce')
+        ).dropna(subset=['value']),
+        'temp': labs_df[labs_df['_kind_lower'].isin(temp_kinds)].copy().assign(
+            value=lambda x: pd.to_numeric(x['value'], errors='coerce')
+        ).dropna(subset=['value']),
+        'scr': labs_df[labs_df['_kind_lower'].isin(scr_kinds)].copy().assign(
+            value=lambda x: pd.to_numeric(x['value'], errors='coerce')
+        ).dropna(subset=['value']),
+        'potassium': labs_df[labs_df['_kind_lower'].isin(k_kinds)].copy().assign(
+            value=lambda x: pd.to_numeric(x['value'], errors='coerce')
+        ).dropna(subset=['value']),
+        'bun': labs_df[labs_df['_kind_lower'].isin(bun_kinds)].copy().assign(
+            value=lambda x: pd.to_numeric(x['value'], errors='coerce')
+        ).dropna(subset=['value'])
     }
 
 
