@@ -871,18 +871,21 @@ with right:
     tick_vals = list(np.arange(0, max_tick + 1, 24))
 
     # ======== ALWAYS SHOW: Timeline ========
+    # ======== ALWAYS SHOW: Timeline ========
     st.markdown("**Care Timeline (ED / ICU Periods)**")
     if not intervals_df.empty and horizon_hours:
-        timeline_chart = alt.Chart(intervals_df).mark_bar(size=40).encode(
+        timeline_chart = alt.Chart(intervals_df).mark_bar(size=30).encode(
             x=alt.X("start:Q",
                     scale=alt.Scale(domain=[0, horizon_hours]),
                     axis=alt.Axis(values=tick_vals),
                     title="Hours since admission"),
             x2="end:Q",
-            y=alt.value(20),
+            y=alt.Y("label:N",
+                    title=None,
+                    axis=alt.Axis(labelAngle=0)),
             color=alt.Color(
                 "label:N",
-                legend=alt.Legend(title="Care Setting"),
+                legend=None,  # Remove legend since labels are on y-axis
                 scale=alt.Scale(
                     domain=["ED", "ICU"],
                     range=["#fde68a", "#bfdbfe"]
@@ -893,12 +896,10 @@ with right:
                 alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
                 alt.Tooltip("end:Q", format=".1f", title="End (hr)")
             ]
-        ).properties(height=80)
+        ).properties(height=100)
         st.altair_chart(timeline_chart, use_container_width=True)
     else:
         st.info("No ED/ICU timing information available.")
-
-    st.markdown("---")
 
     # ======== ALWAYS SHOW: Creatinine ========
     st.markdown("**Serum Creatinine (mg/dL)**")
