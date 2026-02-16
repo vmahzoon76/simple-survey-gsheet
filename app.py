@@ -879,7 +879,7 @@ with right:
                     axis=alt.Axis(values=tick_vals),
                     title="Hours since admission"),
             x2="end:Q",
-            y=alt.Y("label:N", axis=None),,
+            y=alt.Y("label:N", axis=None),
             color=alt.Color(
                 "label:N",
                 legend=alt.Legend(title="Care Setting"),
