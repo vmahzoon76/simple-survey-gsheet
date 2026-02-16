@@ -717,6 +717,7 @@ if "resp_headers" not in st.session_state:
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
+inputs = _read_ws_df(st.secrets["gsheet_id"], "inputs")
 
 
 
@@ -728,6 +729,11 @@ for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtim
 # Parse labs timestamp
 if "timestamp" in labs.columns:
     labs["timestamp"] = pd.to_datetime(labs["timestamp"], errors="coerce")
+
+# Add this for inputs:
+for _c in ["start time", "end time"]:
+    if _c in inputs.columns:
+        inputs[_c] = pd.to_datetime(inputs[_c], errors="coerce")
 
 
 
@@ -824,6 +830,18 @@ else:
 
 # Normalize kind for easier filtering
 case_labs["_kind_lower"] = case_labs["kind"].astype(str).str.lower()
+
+
+# Add this:
+case_inputs = inputs[inputs["case_id"].astype(str) == case_id].copy()
+
+# Compute hours since admission for inputs
+if pd.notna(admit_ts):
+    case_inputs["start_hours"] = (case_inputs["start time"] - admit_ts).dt.total_seconds() / 3600.0
+    case_inputs["end_hours"] = (case_inputs["end time"] - admit_ts).dt.total_seconds() / 3600.0
+else:
+    case_inputs["start_hours"] = pd.NA
+    case_inputs["end_hours"] = pd.NA
 
 
 
@@ -937,7 +955,8 @@ with right:
             "Blood Pressure",
             "Temperature",
             "Potassium",
-            "BUN"
+            "BUN",
+            "Lasix"
         ])
 
         # Tab 0: Urine Output
@@ -1039,6 +1058,43 @@ with right:
                 st.altair_chart(chart, use_container_width=True)
             else:
                 st.warning("No BUN values available.")
+
+                # Tab 5: Lasix
+                with tabs[5]:
+                    st.markdown("**Lasix Administration**")
+                    lasix_data = case_inputs[
+                        case_inputs["unit"].astype(str).str.lower().isin(["mg", "milligram"])].copy()
+
+                    if not lasix_data.empty and pd.notna(admit_ts) and lasix_data["start_hours"].notna().any():
+                        # Calculate duration for each dose
+                        lasix_data["duration_hours"] = lasix_data["end_hours"] - lasix_data["start_hours"]
+
+                        # Create bar chart
+                        bars = alt.Chart(lasix_data).mark_bar(opacity=0.7).encode(
+                            x=alt.X("start_hours:Q",
+                                    title="Hours since admission",
+                                    scale=alt.Scale(domain=[0, horizon_hours]),
+                                    axis=alt.Axis(values=tick_vals)),
+                            x2="end_hours:Q",
+                            y=alt.Y("value:Q", title="Lasix Dose (mg)"),
+                            color=alt.value("#10b981"),  # Green color
+                            tooltip=[
+                                alt.Tooltip("start time:T", title="Start Time"),
+                                alt.Tooltip("end time:T", title="End Time"),
+                                alt.Tooltip("start_hours:Q", title="Hours since admission", format=".1f"),
+                                alt.Tooltip("duration_hours:Q", title="Duration (hr)", format=".1f"),
+                                alt.Tooltip("value:Q", title="Dose (mg)", format=".0f")
+                            ]
+                        ).properties(height=300)
+
+                        st.altair_chart(bars, use_container_width=True)
+
+                        # Show summary statistics
+                        total_dose = lasix_data["value"].sum()
+                        num_doses = len(lasix_data)
+                        st.caption(f"Total: {total_dose:.0f} mg across {num_doses} dose(s)")
+                    else:
+                        st.warning("No Lasix administration data available.")
 
 
         
