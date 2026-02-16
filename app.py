@@ -949,8 +949,12 @@ with right:
         if not uo_data.empty and pd.notna(admit_ts) and uo_data["hours"].notna().any():
             # Add source type for coloring different sources
             uo_data['source'] = uo_data['kind'].str.title()
-            
-            chart = alt.Chart(uo_data).mark_line(point=True).encode(
+
+            chart = alt.Chart(uo_data).mark_point(
+                size=70,
+                filled=True
+            ).encode(
+                (
                 x=alt.X("hours:Q",
                         title="Hours since admission",
                         scale=alt.Scale(domain=[0,  horizon_hours]),
