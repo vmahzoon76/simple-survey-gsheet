@@ -1,4 +1,3 @@
-
 import os
 import json
 import time
@@ -12,6 +11,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from streamlit.components.v1 import html as _html
+import altair as alt
 
 # Optional Google Sheets support
 USE_GSHEETS = True
@@ -68,7 +68,7 @@ def make_patient_blurb(age, gender, weight):
     weight_s  = _fmt_num(weight)
 
     parts = []
-    if gender_s: parts.append(gender_s.lower())     # “female” / “male”
+    if gender_s: parts.append(gender_s.lower())     # "female" / "male"
     if age_s:    parts.append(f"age {age_s}")
     if weight_s: parts.append(f"weight {weight_s} kg")
 
@@ -136,6 +136,43 @@ def _hours_to_int(col: pd.Series) -> pd.Series:
     # Round to nearest hour and keep NA friendly
     s = pd.to_numeric(col, errors="coerce")
     return s.round().astype("Int64")  # Pandas nullable int so NaN stays blank
+
+
+def group_labs_by_category(labs_df):
+    """Group lab measurements into clinical categories."""
+    
+    # Blood Pressure (combine all BP types)
+    bp_kinds = ['non invasive blood pressure systolic', 
+                'non invasive blood pressure diastolic',
+                'non invasive blood pressure mean',
+                'arterial blood pressure systolic',
+                'arterial blood pressure diastolic', 
+                'arterial blood pressure mean']
+    
+    # Urine Output (combine all UO types)
+    uo_kinds = ['foley', 'void', 'condom cath', 'straight cath', 
+                'gu irrigant/urine volume out']
+    
+    # Temperature
+    temp_kinds = ['temprature', 'temperature']  # handle typo
+    
+    # Creatinine
+    scr_kinds = ['scr']
+    
+    # Potassium
+    k_kinds = ['potassium']
+    
+    # BUN
+    bun_kinds = ['bun']
+    
+    return {
+        'bp': labs_df[labs_df['_kind_lower'].isin(bp_kinds)].copy(),
+        'uo': labs_df[labs_df['_kind_lower'].isin(uo_kinds)].copy(),
+        'temp': labs_df[labs_df['_kind_lower'].isin(temp_kinds)].copy(),
+        'scr': labs_df[labs_df['_kind_lower'].isin(scr_kinds)].copy(),
+        'potassium': labs_df[labs_df['_kind_lower'].isin(k_kinds)].copy(),
+        'bun': labs_df[labs_df['_kind_lower'].isin(bun_kinds)].copy()
+    }
 
 
 from streamlit.components.v1 import html as _html
@@ -602,10 +639,10 @@ if not st.session_state.entered:
     ### Do Not Count
     • Chronic kidney disease (CKD) or ESRD alone  
     • Past AKI from previous admissions  
-    • Statements clearly ruling out AKI (e.g., “no AKI,” “renal function stable”)  
+    • Statements clearly ruling out AKI (e.g., "no AKI," "renal function stable")  
 
     ### Remember
-    • Sometimes the note writer’s belief and *your* belief may differ.  
+    • Sometimes the note writer's belief and *your* belief may differ.  
     • Focus only on **this admission**.
 
     ### Contact
@@ -638,6 +675,7 @@ adm_headers = [
     "admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"
 ]
 
+labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 
 resp_headers = [
     "timestamp_et", "reviewer_id", "case_id", "step",
@@ -654,15 +692,17 @@ resp_headers = [
 
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
+ws_labs = get_or_create_ws(sh, "labs", labs_headers)
 ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 
-# Cache the response headers once so we don’t re-read them on every save
+# Cache the response headers once so we don't re-read them on every save
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
 
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
+labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 
 
 
@@ -670,6 +710,10 @@ responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"]:
     if _c in admissions.columns:
         admissions[_c] = pd.to_datetime(admissions[_c], errors="coerce")
+
+# Parse labs timestamp
+if "timestamp" in labs.columns:
+    labs["timestamp"] = pd.to_datetime(labs["timestamp"], errors="coerce")
 
 
 
@@ -755,6 +799,18 @@ icu_out_ts= case.get("outtime")
 age       = case.get("age", "")             # <-- new
 gender    = case.get("gender", "")          # <-- new
 
+# Filter labs for this case
+case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
+
+# Compute hours since admission
+if pd.notna(admit_ts):
+    case_labs["hours"] = (case_labs["timestamp"] - admit_ts).dt.total_seconds() / 3600.0
+else:
+    case_labs["hours"] = pd.NA
+
+# Normalize kind for easier filtering
+case_labs["_kind_lower"] = case_labs["kind"].astype(str).str.lower()
+
 
 
 st.caption(
@@ -781,9 +837,162 @@ with left:
 
 
 with right:
-    if st.session_state.step == 1:
-        st.info("Narrative only")
+    st.markdown("**Lab Values & Vitals**")
     
+    # Get patient blurb
+    blurb = make_patient_blurb(age, gender, weight)
+    st.markdown(f"> {blurb}")
+    
+    # Group labs by category
+    lab_groups = group_labs_by_category(case_labs)
+    
+    # Create tabs for each lab type
+    tabs = st.tabs([
+        "Creatinine",
+        "Urine Output", 
+        "Blood Pressure",
+        "Temperature",
+        "Potassium",
+        "BUN"
+    ])
+    
+    # Build intervals for shading (ED/ICU periods)
+    intervals_df, horizon_hours = _build_intervals_hours(
+        admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
+    )
+    
+    # -------- Tab 0: Creatinine --------
+    with tabs[0]:
+        st.markdown("**Serum Creatinine (mg/dL)**")
+        scr_data = lab_groups['scr']
+        
+        if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
+            # Calculate x-axis range
+            max_tick = int(np.ceil(horizon_hours / 24.0) * 24) if horizon_hours else 168
+            tick_vals = list(np.arange(0, max_tick + 1, 24))
+            
+            # Main line chart
+            line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
+                x=alt.X("hours:Q",
+                        title="Hours since admission",
+                        scale=alt.Scale(domain=[0, horizon_hours or max_tick]),
+                        axis=alt.Axis(values=tick_vals)),
+                y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
+                tooltip=["timestamp:T", "hours:Q", "value:Q", "kind:N"]
+            )
+            
+            # Add shading for ED/ICU if available
+            if not intervals_df.empty:
+                shade = alt.Chart(intervals_df).mark_rect(opacity=0.2).encode(
+                    x="start:Q", x2="end:Q",
+                    color=alt.Color("label:N", 
+                                    legend=alt.Legend(title="Care setting"),
+                                    scale=alt.Scale(domain=["ED", "ICU"], 
+                                                   range=["#fde68a", "#bfdbfe"]))
+                )
+                st.altair_chart(alt.layer(shade, line).resolve_scale(color='independent'), 
+                              use_container_width=True)
+            else:
+                st.altair_chart(line, use_container_width=True)
+        else:
+            st.warning("No creatinine values available for this case.")
+    
+    # -------- Tab 1: Urine Output --------
+    with tabs[1]:
+        st.markdown("**Urine Output (mL)**")
+        uo_data = lab_groups['uo']
+        
+        if not uo_data.empty and pd.notna(admit_ts) and uo_data["hours"].notna().any():
+            # Add source type for coloring different sources
+            uo_data['source'] = uo_data['kind'].str.title()
+            
+            chart = alt.Chart(uo_data).mark_line(point=True).encode(
+                x=alt.X("hours:Q", 
+                       title="Hours since admission",
+                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                y=alt.Y("value:Q", title="Urine Output (mL)"),
+                color=alt.Color("source:N", legend=alt.Legend(title="Source")),
+                tooltip=["timestamp:T", "hours:Q", "value:Q", "source:N"]
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.warning("No urine output values available.")
+    
+    # -------- Tab 2: Blood Pressure --------
+    with tabs[2]:
+        st.markdown("**Blood Pressure (mmHg)**")
+        bp_data = lab_groups['bp']
+        
+        if not bp_data.empty and pd.notna(admit_ts) and bp_data["hours"].notna().any():
+            # Separate systolic, diastolic, mean
+            bp_data['bp_type'] = bp_data['kind'].str.extract(r'(systolic|diastolic|mean)', expand=False)
+            bp_data['bp_type'] = bp_data['bp_type'].str.title()
+            
+            chart = alt.Chart(bp_data).mark_line(point=True).encode(
+                x=alt.X("hours:Q", 
+                       title="Hours since admission",
+                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                y=alt.Y("value:Q", title="Blood Pressure (mmHg)"),
+                color=alt.Color("bp_type:N", 
+                              legend=alt.Legend(title="BP Type"),
+                              scale=alt.Scale(domain=['Systolic', 'Diastolic', 'Mean'],
+                                            range=['#dc2626', '#2563eb', '#059669'])),
+                tooltip=["timestamp:T", "hours:Q", "value:Q", "bp_type:N", "kind:N"]
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.warning("No blood pressure values available.")
+    
+    # -------- Tab 3: Temperature --------
+    with tabs[3]:
+        st.markdown("**Temperature (°C or °F)**")
+        temp_data = lab_groups['temp']
+        
+        if not temp_data.empty and pd.notna(admit_ts) and temp_data["hours"].notna().any():
+            chart = alt.Chart(temp_data).mark_line(point=True, color='#f97316').encode(
+                x=alt.X("hours:Q", 
+                       title="Hours since admission",
+                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                y=alt.Y("value:Q", title=f"Temperature ({temp_data['unit'].iloc[0] if len(temp_data) > 0 else ''})"),
+                tooltip=["timestamp:T", "hours:Q", "value:Q", "unit:N"]
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.warning("No temperature values available.")
+    
+    # -------- Tab 4: Potassium --------
+    with tabs[4]:
+        st.markdown("**Potassium (mEq/L)**")
+        k_data = lab_groups['potassium']
+        
+        if not k_data.empty and pd.notna(admit_ts) and k_data["hours"].notna().any():
+            chart = alt.Chart(k_data).mark_line(point=True, color='#8b5cf6').encode(
+                x=alt.X("hours:Q", 
+                       title="Hours since admission",
+                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                y=alt.Y("value:Q", title="Potassium (mEq/L)"),
+                tooltip=["timestamp:T", "hours:Q", "value:Q"]
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.warning("No potassium values available.")
+    
+    # -------- Tab 5: BUN --------
+    with tabs[5]:
+        st.markdown("**BUN (mg/dL)**")
+        bun_data = lab_groups['bun']
+        
+        if not bun_data.empty and pd.notna(admit_ts) and bun_data["hours"].notna().any():
+            chart = alt.Chart(bun_data).mark_line(point=True, color='#06b6d4').encode(
+                x=alt.X("hours:Q", 
+                       title="Hours since admission",
+                       scale=alt.Scale(domain=[0, horizon_hours or 168])),
+                y=alt.Y("value:Q", title="BUN (mg/dL)"),
+                tooltip=["timestamp:T", "hours:Q", "value:Q"]
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.warning("No BUN values available.")
 
         
 
@@ -936,7 +1145,7 @@ if st.session_state.step == 1:
             }
             append_dict(ws_resp, row, headers=st.session_state.resp_headers)
 
-            # Clear Step-1 param so it won’t bleed anywhere
+            # Clear Step-1 param so it won't bleed anywhere
             try:
                 st.query_params.pop(qp_key, None)
             except Exception:
@@ -981,4 +1190,3 @@ if st.session_state.step == 1:
 #         _scroll_top()
 #         time.sleep(0.18)
 #         _rerun()
-
