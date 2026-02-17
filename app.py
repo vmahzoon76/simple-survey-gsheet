@@ -891,47 +891,48 @@ with right:
     # ======== ALWAYS SHOW: Timeline ========
     # ======== ALWAYS SHOW: Timeline ========
     # ======== ALWAYS SHOW: Timeline ========
-    st.markdown("**Care Timeline (ED / ICU Periods)**")
-    if not intervals_df.empty and horizon_hours:
-        timeline_chart = alt.Chart(intervals_df).mark_bar(size=30).encode(
-            x=alt.X("start:Q",
-                    scale=alt.Scale(domain=[0, max_tick]),
-                    axis=alt.Axis(values=tick_vals, labelAngle=0, orient="bottom"),
-                    title="Hours since admission"),
-            x2="end:Q",
-            y=alt.Y("label:N",
-                    axis=None,
-                    scale=alt.Scale(paddingInner=0.3, paddingOuter=0.2)),
-            color=alt.Color(
-                "label:N",
-                legend=alt.Legend(title="Care Setting", orient="top"),
-                scale=alt.Scale(
-                    domain=["ED", "ICU"],
-                    range=["#fde68a", "#bfdbfe"]
-                )
-            ),
-            tooltip=[
-                alt.Tooltip("label:N", title="Care setting"),
-                alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
-                alt.Tooltip("end:Q", format=".1f", title="End (hr)")
-            ]
-        ).properties(height=130).configure_view(
-            strokeWidth=0
-        )
-        st.altair_chart(timeline_chart, use_container_width=True)
-    else:
-        st.info("No ED/ICU timing information available.")
-
-    st.markdown("---")
+    # st.markdown("**Care Timeline (ED / ICU Periods)**")
+    # if not intervals_df.empty and horizon_hours:
+    #     timeline_chart = alt.Chart(intervals_df).mark_bar(size=30).encode(
+    #         x=alt.X("start:Q",
+    #                 scale=alt.Scale(domain=[0, max_tick]),
+    #                 axis=alt.Axis(values=tick_vals, labelAngle=0, orient="bottom"),
+    #                 title="Hours since admission"),
+    #         x2="end:Q",
+    #         y=alt.Y("label:N",
+    #                 axis=None,
+    #                 scale=alt.Scale(paddingInner=0.3, paddingOuter=0.2)),
+    #         color=alt.Color(
+    #             "label:N",
+    #             legend=alt.Legend(title="Care Setting", orient="top"),
+    #             scale=alt.Scale(
+    #                 domain=["ED", "ICU"],
+    #                 range=["#fde68a", "#bfdbfe"]
+    #             )
+    #         ),
+    #         tooltip=[
+    #             alt.Tooltip("label:N", title="Care setting"),
+    #             alt.Tooltip("start:Q", format=".1f", title="Start (hr)"),
+    #             alt.Tooltip("end:Q", format=".1f", title="End (hr)")
+    #         ]
+    #     ).properties(height=130).configure_view(
+    #         strokeWidth=0
+    #     )
+    #     st.altair_chart(timeline_chart, use_container_width=True)
+    # else:
+    #     st.info("No ED/ICU timing information available.")
+    #
+    # st.markdown("---")
 
     # ======== ALWAYS SHOW: Creatinine ========
+    # Replace the SCr chart block with this:
     st.markdown("**Serum Creatinine (mg/dL)**")
     scr_data = lab_groups['scr'].sort_values("timestamp")
 
     if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
+
         line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
-            x=alt.X("hours:Q",
-                    title="Hours since admission",
+            x=alt.X("hours:Q", title="Hours since admission",
                     scale=alt.Scale(domain=[0, max_tick]),
                     axis=alt.Axis(values=tick_vals)),
             y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
@@ -942,7 +943,22 @@ with right:
                 alt.Tooltip("kind:N", title="Measurement type")
             ]
         )
-        st.altair_chart(line, use_container_width=True)
+
+        if not intervals_df.empty:
+            shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
+                x=alt.X("start:Q", scale=alt.Scale(domain=[0, max_tick])),
+                x2="end:Q",
+                color=alt.Color("label:N",
+                                legend=alt.Legend(title="Care Setting"),
+                                scale=alt.Scale(domain=["ED", "ICU"],
+                                                range=["#fde68a", "#bfdbfe"]))
+            )
+            chart = alt.layer(line, shade).resolve_scale(color="independent")
+        else:
+            chart = line
+
+        st.altair_chart(chart, use_container_width=True)
+
     else:
         st.warning("No creatinine values available for this case.")
 
@@ -958,6 +974,19 @@ with right:
             "BUN",
             "Lasix"
         ])
+
+
+        # Helper: build shade layer
+        def make_shade(domain_max):
+            return alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
+                x=alt.X("start:Q", scale=alt.Scale(domain=[0, domain_max])),
+                x2="end:Q",
+                color=alt.Color("label:N",
+                                legend=alt.Legend(title="Care Setting"),
+                                scale=alt.Scale(domain=["ED", "ICU"],
+                                                range=["#fde68a", "#bfdbfe"]))
+            )
+
 
         # Tab 0: Urine Output
         with tabs[0]:
@@ -975,7 +1004,11 @@ with right:
                     color=alt.Color("source:N", legend=alt.Legend(title="Source")),
                     tooltip=["timestamp:T", "hours:Q", "value:Q", "source:N"]
                 )
-                st.altair_chart(chart, use_container_width=True)
+                if not intervals_df.empty:
+                    final = alt.layer(chart, make_shade(max_tick)).resolve_scale(color="independent")
+                else:
+                    final = chart
+                st.altair_chart(final, use_container_width=True)
             else:
                 st.warning("No urine output values available.")
 
@@ -1000,7 +1033,11 @@ with right:
                                                     range=['#dc2626', '#2563eb', '#059669'])),
                     tooltip=["timestamp:T", "hours:Q", "value:Q", "bp_type:N", "kind:N"]
                 )
-                st.altair_chart(chart, use_container_width=True)
+                if not intervals_df.empty:
+                    final = alt.layer(chart, make_shade(max_tick)).resolve_scale(color="independent")
+                else:
+                    final = chart
+                st.altair_chart(final, use_container_width=True)
             else:
                 st.warning("No blood pressure values available.")
 
@@ -1010,16 +1047,23 @@ with right:
             temp_data = lab_groups['temp'].sort_values("timestamp")
 
             if not temp_data.empty and pd.notna(admit_ts) and temp_data["hours"].notna().any():
+                temp_unit = temp_data['unit'].iloc[0] if len(temp_data) > 0 else ''
+                y_min, y_max = (90, 105) if str(temp_unit).strip() in ['F', '°F', 'degF', 'f'] else (35, 42)
                 chart = alt.Chart(temp_data).mark_line(point=True, color='#f97316').encode(
                     x=alt.X("hours:Q",
                             title="Hours since admission",
                             scale=alt.Scale(domain=[0, max_tick]),
                             axis=alt.Axis(values=tick_vals)),
                     y=alt.Y("value:Q",
-                            title=f"Temperature ({temp_data['unit'].iloc[0] if len(temp_data) > 0 else ''})"),
+                            title=f"Temperature ({temp_unit})",
+                            scale=alt.Scale(domain=[y_min, y_max])),
                     tooltip=["timestamp:T", "hours:Q", "value:Q", "unit:N"]
                 )
-                st.altair_chart(chart, use_container_width=True)
+                if not intervals_df.empty:
+                    final = alt.layer(chart, make_shade(max_tick)).resolve_scale(color="independent")
+                else:
+                    final = chart
+                st.altair_chart(final, use_container_width=True)
             else:
                 st.warning("No temperature values available.")
 
@@ -1037,7 +1081,11 @@ with right:
                     y=alt.Y("value:Q", title="Potassium (mEq/L)"),
                     tooltip=["timestamp:T", "hours:Q", "value:Q"]
                 )
-                st.altair_chart(chart, use_container_width=True)
+                if not intervals_df.empty:
+                    final = alt.layer(chart, make_shade(max_tick)).resolve_scale(color="independent")
+                else:
+                    final = chart
+                st.altair_chart(final, use_container_width=True)
             else:
                 st.warning("No potassium values available.")
 
@@ -1055,12 +1103,14 @@ with right:
                     y=alt.Y("value:Q", title="BUN (mg/dL)"),
                     tooltip=["timestamp:T", "hours:Q", "value:Q"]
                 )
-                st.altair_chart(chart, use_container_width=True)
+                if not intervals_df.empty:
+                    final = alt.layer(chart, make_shade(max_tick)).resolve_scale(color="independent")
+                else:
+                    final = chart
+                st.altair_chart(final, use_container_width=True)
             else:
                 st.warning("No BUN values available.")
 
-                # Tab 5: Lasix
-        # Tab 5: Lasix
         # Tab 5: Lasix
         with tabs[5]:
             st.markdown("**Lasix Administration**")
@@ -1068,14 +1118,12 @@ with right:
                 case_inputs["unit"].astype(str).str.lower().isin(["mg", "milligram"])].copy()
 
             if not lasix_data.empty and pd.notna(admit_ts) and lasix_data["start_hours"].notna().any():
-                # Use start_hours as the time point for each dose
                 lasix_data["value_numeric"] = pd.to_numeric(lasix_data["value"], errors='coerce')
                 lasix_data = lasix_data.dropna(subset=['value_numeric', 'start_hours'])
 
                 if lasix_data.empty:
                     st.warning("Lasix doses found but values are invalid.")
                 else:
-                    # Create chart with downward-pointing triangles (arrows)
                     chart = alt.Chart(lasix_data).mark_point(
                         shape='triangle-down',
                         size=200,
@@ -1096,9 +1144,12 @@ with right:
                         ]
                     ).properties(height=300)
 
-                    st.altair_chart(chart, use_container_width=True)
+                    if not intervals_df.empty:
+                        final = alt.layer(chart, make_shade(max_tick)).resolve_scale(color="independent")
+                    else:
+                        final = chart
+                    st.altair_chart(final, use_container_width=True)
 
-                    # Show summary statistics
                     total_dose = lasix_data["value_numeric"].sum()
                     num_doses = len(lasix_data)
                     st.caption(f"Total: {total_dose:.0f} mg across {num_doses} dose(s)")
