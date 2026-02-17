@@ -880,6 +880,25 @@ with right:
         admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, icu_out_ts
     )
 
+    if horizon_hours:
+        # Collect covered intervals
+        covered = sorted(intervals_df[["start", "end"]].values.tolist()) if not intervals_df.empty else []
+
+        # Find gaps
+        gaps = []
+        cursor = 0.0
+        for s, e in covered:
+            if s > cursor:
+                gaps.append(("Hospital", cursor, s))
+            cursor = max(cursor, e)
+        if cursor < horizon_hours:
+            gaps.append(("Hospital", cursor, horizon_hours))
+
+        if gaps:
+            gaps_df = pd.DataFrame(gaps, columns=["label", "start", "end"])
+            intervals_df = pd.concat([intervals_df, gaps_df], ignore_index=True)
+    # ---- END BLOCK ----
+
     # Compute unified x-axis
     if horizon_hours:
         max_tick = int(np.ceil(horizon_hours / 24.0) * 24)
@@ -950,8 +969,8 @@ with right:
                 x2="end:Q",
                 color=alt.Color("label:N",
                                 legend=alt.Legend(title="Care Setting"),
-                                scale=alt.Scale(domain=["ED", "ICU"],
-                                                range=["#fde68a", "#bfdbfe"]))
+                                scale=alt.Scale(domain=["ED", "ICU", "Hospital"],
+                                                range=["#fde68a", "#bfdbfe", "#d1fae5"]))  # light green
             )
             chart = alt.layer(line, shade).resolve_scale(color="independent")
         else:
@@ -977,14 +996,15 @@ with right:
 
 
         # Helper: build shade layer
+        # make_shade helper — update the color scale:
         def make_shade(domain_max):
             return alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
                 x=alt.X("start:Q", scale=alt.Scale(domain=[0, domain_max])),
                 x2="end:Q",
                 color=alt.Color("label:N",
                                 legend=alt.Legend(title="Care Setting"),
-                                scale=alt.Scale(domain=["ED", "ICU"],
-                                                range=["#fde68a", "#bfdbfe"]))
+                                scale=alt.Scale(domain=["ED", "ICU", "Hospital"],
+                                                range=["#fde68a", "#bfdbfe", "#d1fae5"]))  # light green
             )
 
 
