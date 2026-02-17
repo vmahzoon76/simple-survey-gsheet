@@ -950,11 +950,14 @@ with right:
                                 legend=alt.Legend(title="Care Setting"),
                                 scale=alt.Scale(domain=["ED", "ICU"],
                                                 range=["#fde68a", "#bfdbfe"]))
-            ).properties(
-                width=0  # forces non-interactive
+            ).add_params(
+                alt.selection_point(on="mouseover", empty="none")  # dummy param to absorb clicks away
             )
+
             st.altair_chart(
-                alt.layer(shade, line).resolve_scale(color="independent"),
+                alt.layer(shade, line)
+                .resolve_scale(color="independent")
+                .configure_mark(tooltip=None),  # <-- nuclear option: wipe all mark-level tooltips, re-add only on line
                 use_container_width=True
             )
         else:
