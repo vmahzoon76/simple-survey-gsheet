@@ -983,19 +983,33 @@ with right:
             bl_mid = (bl_lower + bl_upper) / 2
             bl_data = pd.DataFrame([{"x": -5, "y": bl_mid}])
 
-            bl_point = alt.Chart(bl_data).mark_point(
-                shape="arrow",
+            # Triangle pointing DOWN to the baseline value
+            bl_arrow = alt.Chart(bl_data).mark_point(
+                shape="triangle-down",
                 color="#7c3aed",
-                size=300,
-                filled=True,
-                angle=0
+                size=200,
+                filled=True
             ).encode(
                 x=alt.X("x:Q"),
                 y=alt.Y("y:Q"),
                 tooltip=[alt.Tooltip("y:Q", title="Baseline avg", format=".2f")]
             )
 
-            layers.insert(0, bl_point)
+            # Text label above the arrow
+            bl_text = alt.Chart(bl_data).mark_text(
+                color="#7c3aed",
+                fontSize=11,
+                fontWeight="bold",
+                dy=-18,  # shift text above the triangle
+                dx=5
+            ).encode(
+                x=alt.X("x:Q"),
+                y=alt.Y("y:Q"),
+                text=alt.Text("y:Q", format=".2f")
+            )
+
+            layers.insert(0, bl_arrow)
+            layers.insert(1, bl_text)
 
         if not intervals_df.empty:
             shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
