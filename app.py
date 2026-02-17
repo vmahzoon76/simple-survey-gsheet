@@ -943,6 +943,18 @@ with right:
             ]
         )
         if not intervals_df.empty:
+            # Invisible tooltip overlay on top of everything
+            tooltip_layer = alt.Chart(scr_data).mark_point(opacity=0, size=200).encode(
+                x=alt.X("hours:Q", scale=alt.Scale(domain=[0, max_tick])),
+                y=alt.Y("value:Q"),
+                tooltip=[
+                    alt.Tooltip("timestamp:T", title="Time"),
+                    alt.Tooltip("hours:Q", title="Hours since admission", format=".1f"),
+                    alt.Tooltip("value:Q", title="Creatinine (mg/dL)", format=".2f"),
+                    alt.Tooltip("kind:N", title="Measurement type")
+                ]
+            )
+
             shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
                 x=alt.X("start:Q", scale=alt.Scale(domain=[0, max_tick])),
                 x2="end:Q",
@@ -950,14 +962,10 @@ with right:
                                 legend=alt.Legend(title="Care Setting"),
                                 scale=alt.Scale(domain=["ED", "ICU"],
                                                 range=["#fde68a", "#bfdbfe"]))
-            ).add_params(
-                alt.selection_point(on="mouseover", empty="none")  # dummy param to absorb clicks away
             )
 
             st.altair_chart(
-                alt.layer(shade, line)
-                .resolve_scale(color="independent")
-                .configure_mark(tooltip=None),  # <-- nuclear option: wipe all mark-level tooltips, re-add only on line
+                alt.layer(shade, line, tooltip_layer).resolve_scale(color="independent"),
                 use_container_width=True
             )
         else:
