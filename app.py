@@ -862,7 +862,7 @@ left, right = st.columns([1, 1], gap="large")
 with left:
     st.markdown("## Discharge Summary")
     if st.session_state.step == 1:
-        inline_highlighter(summary, case_id=case_id, step_key="step1", height=700)
+        inline_highlighter(summary, case_id=case_id, step_key="step1", height=650)
     else:
         inline_highlighter(summary, case_id=case_id, step_key="step2", height=700)
 
