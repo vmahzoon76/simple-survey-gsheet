@@ -1043,7 +1043,7 @@ with right:
 
         # Tab 2: Temperature
         with tabs[2]:
-            st.markdown("**Temperature (°C or °F)**")
+            st.markdown("**Temperature (°F)**")
             temp_data = lab_groups['temp'].sort_values("timestamp")
 
             if not temp_data.empty and pd.notna(admit_ts) and temp_data["hours"].notna().any():
