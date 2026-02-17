@@ -981,29 +981,34 @@ with right:
             bl_lower = float(bl_row.get("baseline_lower", 0))
             bl_upper = float(bl_row.get("baseline_upper", 0))
             bl_mid = (bl_lower + bl_upper) / 2
-            bl_data = pd.DataFrame([{"x": -5, "y": bl_mid}])
+
+            # Calculate y range to determine offset in data units
+            y_range = scr_data["value"].max() - scr_data["value"].min()
+            tip_offset = y_range * 0.08  # shift triangle UP by 8% of y range so tip lands on value
+
+            bl_data = pd.DataFrame([{"x": -5, "y": bl_mid + tip_offset, "y_val": bl_mid}])
 
             bl_arrow = alt.Chart(bl_data).mark_point(
                 shape="triangle-down",
                 color="#7c3aed",
                 size=200,
-                filled=True,
-                dy=-50  # shift up so the tip of triangle lands on the value
+                filled=True
             ).encode(
                 x=alt.X("x:Q"),
-                y=alt.Y("y:Q"),
-                tooltip=[alt.Tooltip("y:Q", title="Baseline avg", format=".2f")]
+                y=alt.Y("y:Q"),  # shifted up in data units
+                tooltip=[alt.Tooltip("y_val:Q", title="Baseline avg", format=".2f")]
             )
 
             bl_text = alt.Chart(bl_data).mark_text(
                 color="#7c3aed",
                 fontSize=11,
                 fontWeight="bold",
-                dy=-18  # shift text further up above the triangle
+                dy=-18,
+                dx=5
             ).encode(
                 x=alt.X("x:Q"),
                 y=alt.Y("y:Q"),
-                text=alt.Text("y:Q", format=".2f")
+                text=alt.Text("y_val:Q", format=".2f")
             )
 
             layers.append(bl_arrow)
