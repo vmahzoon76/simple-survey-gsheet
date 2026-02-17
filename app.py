@@ -949,8 +949,9 @@ with right:
                 color=alt.Color("label:N",
                                 legend=alt.Legend(title="Care Setting"),
                                 scale=alt.Scale(domain=["ED", "ICU"],
-                                                range=["#fde68a", "#bfdbfe"])),
-                tooltip=alt.value(None)  # <-- disable tooltip on shade layer
+                                                range=["#fde68a", "#bfdbfe"]))
+            ).properties(
+                width=0  # forces non-interactive
             )
             st.altair_chart(
                 alt.layer(shade, line).resolve_scale(color="independent"),
