@@ -931,32 +931,18 @@ with right:
 
     if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
 
-        nearest = alt.selection_point(nearest=True, on="mouseover",
-                                      fields=["hours"], empty=False)
-
-        line = alt.Chart(scr_data).mark_line(color='#ef4444').encode(
+        line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
             x=alt.X("hours:Q", title="Hours since admission",
                     scale=alt.Scale(domain=[0, max_tick]),
                     axis=alt.Axis(values=tick_vals)),
-            y=alt.Y("value:Q", title="Creatinine (mg/dL)")
-        )
-
-        points = alt.Chart(scr_data).mark_point(color='#ef4444', filled=True).encode(
-            x="hours:Q",
-            y="value:Q",
-            opacity=alt.condition(nearest, alt.value(1), alt.value(0.3))
-        ).add_params(nearest)
-
-        rule = alt.Chart(scr_data).mark_rule(color='gray', strokeDash=[4, 4]).encode(
-            x="hours:Q",
-            opacity=alt.condition(nearest, alt.value(0.5), alt.value(0)),
+            y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
             tooltip=[
                 alt.Tooltip("timestamp:T", title="Time"),
                 alt.Tooltip("hours:Q", title="Hours since admission", format=".1f"),
                 alt.Tooltip("value:Q", title="Creatinine (mg/dL)", format=".2f"),
                 alt.Tooltip("kind:N", title="Measurement type")
             ]
-        ).transform_filter(nearest)
+        )
 
         if not intervals_df.empty:
             shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
@@ -967,9 +953,9 @@ with right:
                                 scale=alt.Scale(domain=["ED", "ICU"],
                                                 range=["#fde68a", "#bfdbfe"]))
             )
-            chart = alt.layer(line, points, rule, shade).resolve_scale(color="independent")
+            chart = alt.layer(line, shade).resolve_scale(color="independent")
         else:
-            chart = alt.layer(line, points, rule)
+            chart = line
 
         st.altair_chart(chart, use_container_width=True)
 
