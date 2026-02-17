@@ -718,6 +718,7 @@ responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 inputs = _read_ws_df(st.secrets["gsheet_id"], "inputs")
 avi_round2 = _read_ws_df(st.secrets["gsheet_id"], "avi_round2")
+baseline_df = _read_ws_df(st.secrets["gsheet_id"], "baseline")
 
 # Parse all relevant times
 for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"]:
