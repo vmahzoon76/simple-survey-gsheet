@@ -981,7 +981,7 @@ with right:
         if bl_row is not None:
             bl_lower = float(bl_row.get("baseline_lower", 0))
             bl_upper = float(bl_row.get("baseline_upper", 0))
-            bl_data = pd.DataFrame([{"x": -5, "x2": 0, "low": bl_lower, "high": bl_upper}])
+            bl_data = pd.DataFrame([{"x": -5, "x2": -4, "low": bl_lower, "high": bl_upper}])
 
             baseline_band = alt.Chart(bl_data).mark_rect(opacity=0.3, color="#a78bfa").encode(
                 x=alt.X("x:Q"),
