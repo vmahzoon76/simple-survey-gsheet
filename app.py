@@ -977,45 +977,25 @@ with right:
 
         layers = [line]
 
-        # Add baseline indicator at x = [-5, -4]
         if bl_row is not None:
             bl_lower = float(bl_row.get("baseline_lower", 0))
             bl_upper = float(bl_row.get("baseline_upper", 0))
-            bl_data = pd.DataFrame([{
-                "x": -5, "x2": -4,
-                "low": bl_lower, "high": bl_upper,
-                "mid": -4.5
-            }])
+            bl_mid = (bl_lower + bl_upper) / 2
+            bl_data = pd.DataFrame([{"x": -5, "y": bl_mid}])
 
-            # Filled band
-            bl_band = alt.Chart(bl_data).mark_rect(opacity=0.4, color="#7c3aed").encode(
-                x=alt.X("x:Q"), x2="x2:Q",
-                y=alt.Y("low:Q"), y2="high:Q"
-            )
-            # Top horizontal tick
-            bl_top = alt.Chart(bl_data).mark_rule(color="#7c3aed", strokeWidth=3).encode(
-                x=alt.X("x:Q"), x2="x2:Q",
-                y=alt.Y("high:Q"),
-                tooltip=[
-                    alt.Tooltip("low:Q", title="Baseline lower", format=".2f"),
-                    alt.Tooltip("high:Q", title="Baseline upper", format=".2f")
-                ]
-            )
-            # Bottom horizontal tick
-            bl_bot = alt.Chart(bl_data).mark_rule(color="#7c3aed", strokeWidth=3).encode(
-                x=alt.X("x:Q"), x2="x2:Q",
-                y=alt.Y("low:Q")
-            )
-            # Vertical dashed center line
-            bl_vert = alt.Chart(bl_data).mark_rule(color="#7c3aed", strokeWidth=2, strokeDash=[4, 2]).encode(
-                x=alt.X("mid:Q"),
-                y=alt.Y("low:Q"), y2="high:Q"
+            bl_point = alt.Chart(bl_data).mark_point(
+                shape="arrow",
+                color="#7c3aed",
+                size=300,
+                filled=True,
+                angle=0
+            ).encode(
+                x=alt.X("x:Q"),
+                y=alt.Y("y:Q"),
+                tooltip=[alt.Tooltip("y:Q", title="Baseline avg", format=".2f")]
             )
 
-            layers.insert(0, bl_band)
-            layers.insert(1, bl_top)
-            layers.insert(2, bl_bot)
-            layers.insert(3, bl_vert)
+            layers.insert(0, bl_point)
 
         if not intervals_df.empty:
             shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
@@ -1028,7 +1008,7 @@ with right:
             )
             layers.append(shade)
 
-        chart = alt.layer(*layers).resolve_scale(color="independent", y="shared")
+        chart = alt.layer(*layers).resolve_scale(color="independent")
         st.altair_chart(chart, use_container_width=True)
 
     else:
