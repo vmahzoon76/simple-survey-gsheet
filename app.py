@@ -931,7 +931,6 @@ with right:
 
     if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
 
-        # Nearest point selection for tooltip
         nearest = alt.selection_point(nearest=True, on="mouseover",
                                       fields=["hours"], empty=False)
 
@@ -948,7 +947,6 @@ with right:
             opacity=alt.condition(nearest, alt.value(1), alt.value(0.3))
         ).add_params(nearest)
 
-        # Vertical rule that follows mouse
         rule = alt.Chart(scr_data).mark_rule(color='gray', strokeDash=[4, 4]).encode(
             x="hours:Q",
             opacity=alt.condition(nearest, alt.value(0.5), alt.value(0)),
@@ -969,7 +967,7 @@ with right:
                                 scale=alt.Scale(domain=["ED", "ICU"],
                                                 range=["#fde68a", "#bfdbfe"]))
             )
-            chart = alt.layer(shade, line, points, rule).resolve_scale(color="independent")
+            chart = alt.layer(line, points, rule, shade).resolve_scale(color="independent")
         else:
             chart = alt.layer(line, points, rule)
 
@@ -977,6 +975,7 @@ with right:
 
     else:
         st.warning("No creatinine values available for this case.")
+
 
     st.markdown("---")
 
