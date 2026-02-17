@@ -942,7 +942,6 @@ with right:
                 alt.Tooltip("kind:N", title="Measurement type")
             ]
         )
-        st.altair_chart(line, use_container_width=True)
         if not intervals_df.empty:
             shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
                 x=alt.X("start:Q", scale=alt.Scale(domain=[0, max_tick])),
