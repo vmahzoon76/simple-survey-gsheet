@@ -718,6 +718,7 @@ admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 inputs = _read_ws_df(st.secrets["gsheet_id"], "inputs")
+avi_round2 = _read_ws_df(st.secrets["gsheet_id"], "avi_round2")
 
 
 
@@ -861,9 +862,30 @@ left, right = st.columns([1, 1], gap="large")
 with left:
     st.markdown("## Discharge Summary")
     if st.session_state.step == 1:
-        inline_highlighter(summary, case_id=case_id, step_key="step1", height=1230)
+        inline_highlighter(summary, case_id=case_id, step_key="step1", height=800)
     else:
         inline_highlighter(summary, case_id=case_id, step_key="step2", height=700)
+
+    # ---- ADD THIS BLOCK ----
+    # Show prior labels for this case from avi_round2
+    if not avi_round2.empty and "case_id" in avi_round2.columns:
+        case_label = avi_round2[avi_round2["case_id"].astype(str) == case_id]
+        if not case_label.empty:
+            row = case_label.iloc[0]
+            st.markdown("### Prior Annotation")
+            with st.container(border=True):
+                st.markdown(f"**AKI:** {row.get('aki_avig13', '')}")
+                st.markdown(f"**Extracted Highlights:** {row.get('extracted_highlights_avig13', '')}")
+                st.markdown(f"**Rationale:** {row.get('rationale_aki_avig13', '')}")
+
+                adj_rationale = row.get('rationale_aki_Adjudication', '')
+                if adj_rationale and str(adj_rationale).strip() not in ('', 'nan', 'None'):
+                    st.markdown("---")
+                    st.markdown(f"**Adjudicated AKI:** {row.get('aki_Adjudication', '')}")
+                    st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
+    # ---- END BLOCK ----
+
+
 
 with right:
     st.markdown("## Lab Values & Vitals")
