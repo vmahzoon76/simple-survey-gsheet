@@ -988,7 +988,7 @@ with right:
                 color="#7c3aed",
                 size=200,
                 filled=True,
-                dy=15  # shift up so the tip of triangle lands on the value
+                dy=-50  # shift up so the tip of triangle lands on the value
             ).encode(
                 x=alt.X("x:Q"),
                 y=alt.Y("y:Q"),
@@ -999,8 +999,7 @@ with right:
                 color="#7c3aed",
                 fontSize=11,
                 fontWeight="bold",
-                dy=-18,  # shift text further up above the triangle
-                dx=5
+                dy=-18  # shift text further up above the triangle
             ).encode(
                 x=alt.X("x:Q"),
                 y=alt.Y("y:Q"),
