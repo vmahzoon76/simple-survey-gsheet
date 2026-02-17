@@ -953,21 +953,19 @@ with right:
 
     if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
 
-        # Check if baseline exists for this case
+        # Check for baseline
         bl_row = None
         if not baseline_df.empty and "case_id" in baseline_df.columns:
             bl_match = baseline_df[baseline_df["case_id"].astype(str) == case_id]
             if not bl_match.empty:
                 bl_row = bl_match.iloc[0]
 
-        # X-axis: start at -1 if baseline available, else 0
         x_start = -1 if bl_row is not None else 0
-        x_domain = [x_start, max_tick]
 
         line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
             x=alt.X("hours:Q", title="Hours since admission",
-                    scale=alt.Scale(domain=x_domain),
-                    axis=alt.Axis(values=[-1] + tick_vals if x_start == -1 else tick_vals)),
+                    scale=alt.Scale(domain=[x_start, max_tick]),
+                    axis=alt.Axis(values=tick_vals)),
             y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
             tooltip=[
                 alt.Tooltip("timestamp:T", title="Time"),
@@ -979,37 +977,27 @@ with right:
 
         layers = [line]
 
-        # Add baseline error bar at x = -1
+        # Add baseline band at x = -1 if available
         if bl_row is not None:
             bl_lower = float(bl_row.get("baseline_lower", 0))
             bl_upper = float(bl_row.get("baseline_upper", 0))
-            bl_mid = (bl_lower + bl_upper) / 2.0
+            bl_data = pd.DataFrame([{"x": -1, "x2": 0, "low": bl_lower, "high": bl_upper}])
 
-            bl_data = pd.DataFrame([{
-                "x": -1,
-                "mid": bl_mid,
-                "lower": bl_lower,
-                "upper": bl_upper
-            }])
-
-            bl_bar = alt.Chart(bl_data).mark_errorbar(ticks=True, color='#6366f1', strokeWidth=2.5).encode(
+            baseline_band = alt.Chart(bl_data).mark_rect(opacity=0.3, color="#a78bfa").encode(
                 x=alt.X("x:Q"),
-                y=alt.Y("lower:Q", title="Creatinine (mg/dL)"),
-                y2=alt.Y2("upper:Q")
-            )
-            bl_point = alt.Chart(bl_data).mark_point(color='#6366f1', filled=True, size=80).encode(
-                x=alt.X("x:Q"),
-                y=alt.Y("mid:Q"),
+                x2="x2:Q",
+                y=alt.Y("low:Q"),
+                y2="high:Q",
                 tooltip=[
-                    alt.Tooltip("lower:Q", title="Baseline lower", format=".2f"),
-                    alt.Tooltip("upper:Q", title="Baseline upper", format=".2f"),
+                    alt.Tooltip("low:Q", title="Baseline lower", format=".2f"),
+                    alt.Tooltip("high:Q", title="Baseline upper", format=".2f")
                 ]
             )
-            layers += [bl_bar, bl_point]
+            layers.insert(0, baseline_band)
 
         if not intervals_df.empty:
             shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
-                x=alt.X("start:Q", scale=alt.Scale(domain=x_domain)),
+                x=alt.X("start:Q", scale=alt.Scale(domain=[x_start, max_tick])),
                 x2="end:Q",
                 color=alt.Color("label:N",
                                 legend=alt.Legend(title="Care Setting"),
