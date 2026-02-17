@@ -6,8 +6,6 @@ import pytz
 from datetime import datetime
 import numpy as np
 
-
-
 import pandas as pd
 import streamlit as st
 from streamlit.components.v1 import html as _html
@@ -26,11 +24,9 @@ st.set_page_config(page_title="AKI Expert Review", layout="wide")
 # anchor element so hash/focus-based scrolling has a reliable target
 st.markdown('<div id="top" tabindex="-1"></div>', unsafe_allow_html=True)
 
-    
-
-
 # -------------------- Helpers --------------------
 import re
+
 
 def _boldify_simple(text: str) -> str:
     """Convert **...** to <strong>...</strong> without breaking other text."""
@@ -52,6 +48,7 @@ def _fmt_gender(g):
     g = str(g).strip().upper()
     return {"F": "Female", "M": "Male"}.get(g, "")
 
+
 def _fmt_num(x):
     if x is None or (isinstance(x, float) and pd.isna(x)):
         return ""
@@ -62,13 +59,14 @@ def _fmt_num(x):
         s = str(x).strip()
         return "" if s.lower() in {"", "nan", "none"} else s
 
+
 def make_patient_blurb(age, gender, weight):
-    age_s     = _fmt_num(age)
-    gender_s  = _fmt_gender(gender)
-    weight_s  = _fmt_num(weight)
+    age_s = _fmt_num(age)
+    gender_s = _fmt_gender(gender)
+    weight_s = _fmt_num(weight)
 
     parts = []
-    if gender_s: parts.append(gender_s.lower())     # "female" / "male"
+    if gender_s: parts.append(gender_s.lower())  # "female" / "male"
     if age_s:    parts.append(f"age {age_s}")
     if weight_s: parts.append(f"weight {weight_s} kg")
 
@@ -87,7 +85,7 @@ def _build_intervals_hours(admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, ic
     If admit/discharge missing/invalid, returns (empty_df, None).
     """
     if pd.isna(admit_ts) or pd.isna(disch_ts) or (disch_ts < admit_ts):
-        return pd.DataFrame(columns=["label" ,"start" ,"end"]), None
+        return pd.DataFrame(columns=["label", "start", "end"]), None
 
     horizon_hours = (disch_ts - admit_ts).total_seconds() / 3600.0
 
@@ -120,7 +118,7 @@ def _build_intervals_hours(admit_ts, disch_ts, edreg_ts, edout_ts, icu_in_ts, ic
         if e2 > s2:  # keep only positive-length ranges
             clipped.append((lbl, s2, e2))
 
-    return pd.DataFrame(clipped, columns=["label" ,"start" ,"end"]), horizon_hours
+    return pd.DataFrame(clipped, columns=["label", "start", "end"]), horizon_hours
 
 
 def _strip_strong_only(html: str) -> str:
@@ -132,6 +130,7 @@ def _strip_strong_only(html: str) -> str:
     html = re.sub(r'<\s*(?:strong|b)(?:\s+[^>]*)?>', '', html, flags=re.IGNORECASE)
     return html
 
+
 def _hours_to_int(col: pd.Series) -> pd.Series:
     # Round to nearest hour and keep NA friendly
     s = pd.to_numeric(col, errors="coerce")
@@ -140,28 +139,28 @@ def _hours_to_int(col: pd.Series) -> pd.Series:
 
 def group_labs_by_category(labs_df):
     """Group lab measurements into clinical categories."""
-    
+
     # Blood Pressure (combine all BP types)
-    bp_kinds = ['non invasive blood pressure systolic', 
+    bp_kinds = ['non invasive blood pressure systolic',
                 'non invasive blood pressure diastolic',
                 'non invasive blood pressure mean',
                 'arterial blood pressure systolic',
-                'arterial blood pressure diastolic', 
+                'arterial blood pressure diastolic',
                 'arterial blood pressure mean']
-    
+
     # Urine Output (combine all UO types)
-    uo_kinds = ['foley', 'void', 'condom cath', 'straight cath', 
+    uo_kinds = ['foley', 'void', 'condom cath', 'straight cath',
                 'gu irrigant/urine volume out']
-    
+
     # Temperature
     temp_kinds = ['temprature', 'temperature']  # handle typo
-    
+
     # Creatinine
     scr_kinds = ['scr']
-    
+
     # Potassium
     k_kinds = ['potassium']
-    
+
     # BUN
     bun_kinds = ['bun']
 
@@ -213,7 +212,6 @@ import html as _py_html
 from streamlit.components.v1 import html as _html
 import json
 import urllib.parse
-
 
 import html as _py_html
 from streamlit.components.v1 import html as _html
@@ -368,10 +366,6 @@ def inline_highlighter(text: str, case_id: str, step_key: str, height: int = 560
     _html(code, height=height + 70)
 
 
-
-
-
-
 def _rerun():
     """Streamlit rerun helper that works across versions."""
     try:
@@ -379,13 +373,13 @@ def _rerun():
     except AttributeError:
         st.experimental_rerun()
 
+
 @st.cache_data(ttl=60, show_spinner=False)
 def _read_ws_df(sheet_id, ws_title):
     sh = _open_sheet_cached()
     ws = sh.worksheet(ws_title)
     recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
-
 
 
 def _scroll_top():
@@ -448,6 +442,7 @@ def _scroll_top():
         height=0,
     )
 
+
 def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
     """
     Retry wrapper for Google Sheets calls to tolerate transient API errors (rate limit / 5xx).
@@ -463,11 +458,13 @@ def _retry_gs(func, *args, tries=8, delay=1.0, backoff=1.6, **kwargs):
             delay *= backoff
     raise RuntimeError(f"Google Sheets API error after retries: {last}")
 
+
 # ================== Google Sheets helpers ==================
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive",
 ]
+
 
 @st.cache_resource(show_spinner=False)
 def _get_client_cached():
@@ -489,6 +486,7 @@ def _get_client_cached():
     except Exception as e:
         print("Google auth error:", e)
         return None
+
 
 @st.cache_resource(show_spinner=False)
 def _open_sheet_cached():
@@ -514,6 +512,7 @@ def _open_sheet_cached():
             last_err = e
             time.sleep(1.2 * (i + 1))
     raise RuntimeError(f"Google Sheets API error after retries: {last_err}")
+
 
 def get_or_create_ws(sh, title, headers=None):
     """
@@ -549,9 +548,11 @@ def get_or_create_ws(sh, title, headers=None):
             _retry_gs(ws.update, "A1", [merged])
     return ws
 
+
 def ws_to_df(ws):
     recs = _retry_gs(ws.get_all_records)
     return pd.DataFrame(recs)
+
 
 def append_dict(ws, d, headers=None):
     if headers is None:
@@ -573,6 +574,7 @@ def init_state():
     if "jump_to_top" not in st.session_state:
         # start at top on first load
         st.session_state.jump_to_top = True
+
 
 init_state()
 
@@ -628,42 +630,41 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Could not load reviewers: {e}")
 
-
 if not st.session_state.entered:
     _scroll_top()
     st.markdown(
-    """
-    ## Annotation Task for AKI diagnosis
-
-    ### Goal
-    Read a discharge summary and conclude:
-    1. Did the note writer think the patient had AKI?  
-    2. Do *you* think the patient had AKI?  
-    3. Briefly justify your answers.  
-    4. Highlight the supporting text.
-
-    ### How to Decide
-    Count any **acute worsening of kidney function during this admission** as AKI — including:
-    * acute renal failure (ARF)  
-    * acute kidney injury (AKI)  
-    * acute on chronic  
-    * acute tubular necrosis (ATN)  
-    * acute renal insufficiency  
-
-    ### Do Not Count
-    • Chronic kidney disease (CKD) or ESRD alone  
-    • Past AKI from previous admissions  
-    • Statements clearly ruling out AKI (e.g., "no AKI," "renal function stable")  
-
-    ### Remember
-    • Sometimes the note writer's belief and *your* belief may differ.  
-    • Focus only on **this admission**.
-
-    ### Contact
-    If you encounter technical issues or questions:  
-    **Vahid Mahzoon** — tun53200@temple.edu
-    """
-)
+        """
+        ## Annotation Task for AKI diagnosis
+    
+        ### Goal
+        Read a discharge summary and conclude:
+        1. Did the note writer think the patient had AKI?  
+        2. Do *you* think the patient had AKI?  
+        3. Briefly justify your answers.  
+        4. Highlight the supporting text.
+    
+        ### How to Decide
+        Count any **acute worsening of kidney function during this admission** as AKI — including:
+        * acute renal failure (ARF)  
+        * acute kidney injury (AKI)  
+        * acute on chronic  
+        * acute tubular necrosis (ATN)  
+        * acute renal insufficiency  
+    
+        ### Do Not Count
+        • Chronic kidney disease (CKD) or ESRD alone  
+        • Past AKI from previous admissions  
+        • Statements clearly ruling out AKI (e.g., "no AKI," "renal function stable")  
+    
+        ### Remember
+        • Sometimes the note writer's belief and *your* belief may differ.  
+        • Focus only on **this admission**.
+    
+        ### Contact
+        If you encounter technical issues or questions:  
+        **Vahid Mahzoon** — tun53200@temple.edu
+        """
+    )
 
     st.info("Please sign in with your Reviewer ID to begin.")
     st.stop()
@@ -685,7 +686,7 @@ except Exception:
 # ================== Worksheets (create if missing) ==================
 adm_headers = [
     "case_id", "title", "hadm_id", "PT", "DS", "weight",
-    "age", "gender",   # <-- add these two
+    "age", "gender",  # <-- add these two
     "admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"
 ]
 
@@ -693,17 +694,16 @@ labs_headers = ["case_id", "timestamp", "kind", "value", "unit"]
 
 resp_headers = [
     "timestamp_et", "reviewer_id", "case_id", "step",
-    "aki",                     # "Yes"/"No"
-    "highlight_html",          # <mark>...</mark> from this step
-    "rationale_aki",               # free-text rationale (Step 1) or empty on Step 2
-    "aki_etiology",            # Step 2 only when aki == "Yes
+    "aki",  # "Yes"/"No"
+    "highlight_html",  # <mark>...</mark> from this step
+    "rationale_aki",  # free-text rationale (Step 1) or empty on Step 2
+    "aki_etiology",  # Step 2 only when aki == "Yes
     "aki_own",
     "aki_onset",
     "rational_aki_own",
     "treat_aki",
     "aki_surprise",
 ]
-
 
 ws_adm = get_or_create_ws(sh, "admissions", adm_headers)
 ws_labs = get_or_create_ws(sh, "labs", labs_headers)
@@ -713,14 +713,12 @@ ws_resp = get_or_create_ws(sh, "responses", resp_headers)
 if "resp_headers" not in st.session_state:
     st.session_state.resp_headers = _retry_gs(ws_resp.row_values, 1)
 
-
 admissions = _read_ws_df(st.secrets["gsheet_id"], "admissions")
 responses = _read_ws_df(st.secrets["gsheet_id"], "responses")
 labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 inputs = _read_ws_df(st.secrets["gsheet_id"], "inputs")
 avi_round2 = _read_ws_df(st.secrets["gsheet_id"], "avi_round2")
-
-
+baseline_df = _read_ws_df(st.secrets["gsheet_id"], "baseline")
 
 # Parse all relevant times
 for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"]:
@@ -736,15 +734,9 @@ for _c in ["starttime", "endtime"]:
     if _c in inputs.columns:
         inputs[_c] = pd.to_datetime(inputs[_c], errors="coerce")
 
-
-
-
-
-
 if admissions.empty:
     st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
     st.stop()
-
 
 # ===== Resume progress for this reviewer (run once per sign-in) =====
 if st.session_state.entered and not st.session_state.get("progress_initialized"):
@@ -767,7 +759,6 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
         # Sets of finished/started cases
         # Every saved Step 1 now counts as completed
         completed_ids = set(resp.loc[resp["step"] == 1, "case_id"].astype(str)) if not resp.empty else set()
-
 
         # Find first admission not fully completed
         target_idx = None
@@ -798,27 +789,26 @@ if st.session_state.entered and not st.session_state.get("progress_initialized")
     time.sleep(0.15)
     _rerun()
 
-
 # ================== Current case ==================
 if st.session_state.case_idx >= len(admissions):
     st.success("All admissions completed. Thank you!")
     st.stop()
 
 case = admissions.iloc[st.session_state.case_idx]
-case_id   = str(case.get("case_id", ""))
-title     = str(case.get("title", ""))
-summary  = str(case.get("DS", ""))   # Step 1 text
-PT  = str(case.get("PT", ""))   # Step 2 text
-weight    = case.get("weight", "")
-admit_ts  = case.get("admittime")           # pandas.Timestamp or NaT
+case_id = str(case.get("case_id", ""))
+title = str(case.get("title", ""))
+summary = str(case.get("DS", ""))  # Step 1 text
+PT = str(case.get("PT", ""))  # Step 2 text
+weight = case.get("weight", "")
+admit_ts = case.get("admittime")  # pandas.Timestamp or NaT
 # Additional timestamps for shading/axis
-disch_ts  = case.get("dischtime")
-edreg_ts  = case.get("edregtime")
-edout_ts  = case.get("edouttime")
+disch_ts = case.get("dischtime")
+edreg_ts = case.get("edregtime")
+edout_ts = case.get("edouttime")
 icu_in_ts = case.get("intime")
-icu_out_ts= case.get("outtime")
-age       = case.get("age", "")             # <-- new
-gender    = case.get("gender", "")          # <-- new
+icu_out_ts = case.get("outtime")
+age = case.get("age", "")  # <-- new
+gender = case.get("gender", "")  # <-- new
 
 # Filter labs for this case
 case_labs = labs[labs["case_id"].astype(str) == case_id].copy()
@@ -832,7 +822,6 @@ else:
 # Normalize kind for easier filtering
 case_labs["_kind_lower"] = case_labs["kind"].astype(str).str.lower()
 
-
 # Add this:
 case_inputs = inputs[inputs["case_id"].astype(str) == case_id].copy()
 
@@ -844,17 +833,11 @@ else:
     case_inputs["start_hours"] = pd.NA
     case_inputs["end_hours"] = pd.NA
 
-
-
 st.caption(
     f"Reviewer: **{st.session_state.reviewer_id}** • "
     f"Admission {st.session_state.case_idx + 1}/{len(admissions)} • "
 )
 st.markdown(f"### {case_id} — {title}")
-
-
-
-
 
 # ================== Layout ==================
 left, right = st.columns([1, 1], gap="large")
@@ -884,8 +867,6 @@ with left:
                     st.markdown(f"**Adjudicated AKI:** {row.get('aki_Adjudication', '')}")
                     st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
     # ---- END BLOCK ----
-
-
 
 with right:
     st.markdown("## Lab Values & Vitals")
@@ -972,10 +953,21 @@ with right:
 
     if not scr_data.empty and pd.notna(admit_ts) and scr_data["hours"].notna().any():
 
+        # Check if baseline exists for this case
+        bl_row = None
+        if not baseline_df.empty and "case_id" in baseline_df.columns:
+            bl_match = baseline_df[baseline_df["case_id"].astype(str) == case_id]
+            if not bl_match.empty:
+                bl_row = bl_match.iloc[0]
+
+        # X-axis: start at -1 if baseline available, else 0
+        x_start = -1 if bl_row is not None else 0
+        x_domain = [x_start, max_tick]
+
         line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
             x=alt.X("hours:Q", title="Hours since admission",
-                    scale=alt.Scale(domain=[0, max_tick]),
-                    axis=alt.Axis(values=tick_vals)),
+                    scale=alt.Scale(domain=x_domain),
+                    axis=alt.Axis(values=[-1] + tick_vals if x_start == -1 else tick_vals)),
             y=alt.Y("value:Q", title="Creatinine (mg/dL)"),
             tooltip=[
                 alt.Tooltip("timestamp:T", title="Time"),
@@ -985,19 +977,48 @@ with right:
             ]
         )
 
+        layers = [line]
+
+        # Add baseline error bar at x = -1
+        if bl_row is not None:
+            bl_lower = float(bl_row.get("baseline_lower", 0))
+            bl_upper = float(bl_row.get("baseline_upper", 0))
+            bl_mid = (bl_lower + bl_upper) / 2.0
+
+            bl_data = pd.DataFrame([{
+                "x": -1,
+                "mid": bl_mid,
+                "lower": bl_lower,
+                "upper": bl_upper
+            }])
+
+            bl_bar = alt.Chart(bl_data).mark_errorbar(ticks=True, color='#6366f1', strokeWidth=2.5).encode(
+                x=alt.X("x:Q"),
+                y=alt.Y("lower:Q", title="Creatinine (mg/dL)"),
+                y2=alt.Y2("upper:Q")
+            )
+            bl_point = alt.Chart(bl_data).mark_point(color='#6366f1', filled=True, size=80).encode(
+                x=alt.X("x:Q"),
+                y=alt.Y("mid:Q"),
+                tooltip=[
+                    alt.Tooltip("lower:Q", title="Baseline lower", format=".2f"),
+                    alt.Tooltip("upper:Q", title="Baseline upper", format=".2f"),
+                ]
+            )
+            layers += [bl_bar, bl_point]
+
         if not intervals_df.empty:
             shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
-                x=alt.X("start:Q", scale=alt.Scale(domain=[0, max_tick])),
+                x=alt.X("start:Q", scale=alt.Scale(domain=x_domain)),
                 x2="end:Q",
                 color=alt.Color("label:N",
                                 legend=alt.Legend(title="Care Setting"),
                                 scale=alt.Scale(domain=["ED", "ICU", "Hospital"],
-                                                range=["#fde68a", "#bfdbfe", "#d1fae5"]))  # light green
+                                                range=["#fde68a", "#bfdbfe", "#d1fae5"]))
             )
-            chart = alt.layer(line, shade).resolve_scale(color="independent")
-        else:
-            chart = line
+            layers.append(shade)
 
+        chart = alt.layer(*layers).resolve_scale(color="independent")
         st.altair_chart(chart, use_container_width=True)
 
     else:
@@ -1198,35 +1219,29 @@ with right:
             else:
                 st.warning("No Lasix administration data available.")
 
-        
-
-
-
-
 st.markdown("---")
 
 # ================== Questions & Saving ==================
 if st.session_state.step == 1:
     st.subheader("Questions")
 
-#     st.markdown(
-#     "Please remember to **highlight** (using the highlight button above the discharge summary) parts of the note which provide positive or negative evidence about AKI."
-# )
-#
+    #     st.markdown(
+    #     "Please remember to **highlight** (using the highlight button above the discharge summary) parts of the note which provide positive or negative evidence about AKI."
+    # )
+    #
     with st.form("step1_form", clear_on_submit=False):
-#         q_aki = st.radio(
-#             "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
-#             ["Yes — explicitly mentioned", "Yes — could be implied", "No"],
-#             horizontal=False,
-#             index=None,
-#             key=f"q1_aki_{case_id}"
-# )
-#         q_rationale_writer = st.text_area(
-#             "Please provide a brief rationale for your assessment.",
-#             height=140,
-#             key=f"q1_rationale_writer_{case_id}"
-#         )
-
+        #         q_aki = st.radio(
+        #             "Based on the discharge summary, do you think the note writer thought the patient had AKI?",
+        #             ["Yes — explicitly mentioned", "Yes — could be implied", "No"],
+        #             horizontal=False,
+        #             index=None,
+        #             key=f"q1_aki_{case_id}"
+        # )
+        #         q_rationale_writer = st.text_area(
+        #             "Please provide a brief rationale for your assessment.",
+        #             height=140,
+        #             key=f"q1_rationale_writer_{case_id}"
+        #         )
 
         q_aki_own = st.radio(
             "Based on the discharge summary and structured data, do you personally think the patient had AKI?",
@@ -1239,33 +1254,12 @@ if st.session_state.step == 1:
             key=f"q1_aki_own_{case_id}"
         )
 
-
-
-        
         q_rationale = st.text_area(
             "Please provide a brief rationale for your assessment",
             height=140, key=f"q1_rationale_{case_id}"
         )
 
-        
         # If YES → show extra AKI-related questions
-        
-        
-
-
-
-        
-       
-
-        
-      
-
-
-        
-        
-
-
-
 
         submitted1 = st.form_submit_button("Save ✅", disabled=st.session_state.get("saving1", False))
 
@@ -1286,8 +1280,8 @@ if st.session_state.step == 1:
                 "step": 1,
                 # "aki": q_aki,
                 # "highlight_html": hl_html,
-                #"rationale_aki": q_rationale_writer,
-                #"aki_etiology": "; ".join(aki_et),
+                # "rationale_aki": q_rationale_writer,
+                # "aki_etiology": "; ".join(aki_et),
                 "aki_own": q_aki_own,
                 "rational_aki_own": q_rationale,
                 # "aki_onset": q_onset,
@@ -1309,20 +1303,18 @@ if st.session_state.step == 1:
             for key in ["q1_aki", "q1_rationale", "q1_conf"]:
                 if key in st.session_state:
                     del st.session_state[key]
-            
+
             # Advance to next admission
             st.session_state.case_idx += 1
             st.session_state.step = 1
             st.session_state.jump_to_top = True
-            _scroll_top(); time.sleep(0.25); _rerun()
+            _scroll_top();
+            time.sleep(0.25);
+            _rerun()
 
 
         finally:
             st.session_state.saving1 = False
-
-
-
-
 
 # # # Navigation helpers
 c1, c2, c3 = st.columns(3)
