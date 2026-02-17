@@ -960,7 +960,7 @@ with right:
             if not bl_match.empty:
                 bl_row = bl_match.iloc[0]
 
-        x_start = -1 if bl_row is not None else 0
+        x_start = -5 if bl_row is not None else 0
 
         line = alt.Chart(scr_data).mark_line(point=True, color='#ef4444').encode(
             x=alt.X("hours:Q", title="Hours since admission",
@@ -981,7 +981,7 @@ with right:
         if bl_row is not None:
             bl_lower = float(bl_row.get("baseline_lower", 0))
             bl_upper = float(bl_row.get("baseline_upper", 0))
-            bl_data = pd.DataFrame([{"x": -1, "x2": 0, "low": bl_lower, "high": bl_upper}])
+            bl_data = pd.DataFrame([{"x": -5, "x2": 0, "low": bl_lower, "high": bl_upper}])
 
             baseline_band = alt.Chart(bl_data).mark_rect(opacity=0.3, color="#a78bfa").encode(
                 x=alt.X("x:Q"),
