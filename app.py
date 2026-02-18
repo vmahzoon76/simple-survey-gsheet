@@ -1274,7 +1274,7 @@ with right:
                             case_iv["end_hours"].round(1).astype(str) + "h"
                     )
 
-                    chart = alt.Chart(case_iv).mark_rect(color="#3b82f6", opacity=0.85).encode(
+                    chart = alt.Chart(case_iv).mark_bar(color="#3b82f6", opacity=0.85).encode(
                         x=alt.X("start_hours:Q",
                                 title="Hours since admission",
                                 scale=alt.Scale(domain=[0, max_tick]),
@@ -1283,7 +1283,6 @@ with right:
                         y=alt.Y("intake_ml:Q",
                                 title="IV Intake (mL)",
                                 scale=alt.Scale(zero=True)),
-                        y2=alt.value(0),
                         tooltip=[
                             alt.Tooltip("period:N", title="Period"),
                             alt.Tooltip("intake_ml:Q", title="Intake (mL)", format=".0f"),
