@@ -719,6 +719,8 @@ labs = _read_ws_df(st.secrets["gsheet_id"], "labs")
 inputs = _read_ws_df(st.secrets["gsheet_id"], "inputs")
 avi_round2 = _read_ws_df(st.secrets["gsheet_id"], "avi_round2")
 baseline_df = _read_ws_df(st.secrets["gsheet_id"], "baseline")
+proc_df = _read_ws_df(st.secrets["gsheet_id"], "proc")
+icd_df = _read_ws_df(st.secrets["gsheet_id"], "icd")
 
 # Parse all relevant times
 for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"]:
@@ -1058,7 +1060,9 @@ with right:
             "Temperature",
             "Potassium",
             "BUN",
-            "Lasix"
+            "Lasix",
+            "Procedures",  # new
+            "Diagnoses"  # new
         ])
 
 
@@ -1242,6 +1246,26 @@ with right:
                     st.caption(f"Total: {total_dose:.0f} mg across {num_doses} dose(s)")
             else:
                 st.warning("No Lasix administration data available.")
+
+        # Tab 6: Procedures
+        with tabs[6]:
+            st.markdown("**Procedures**")
+            case_proc = proc_df[proc_df["case_id"].astype(str) == case_id].copy()
+            if not case_proc.empty:
+                case_proc = case_proc.drop(columns=["case_id"], errors="ignore")
+                st.dataframe(case_proc, use_container_width=True, hide_index=True)
+            else:
+                st.warning("No procedure data available for this case.")
+
+        # Tab 7: Diagnoses
+        with tabs[7]:
+            st.markdown("**Diagnosis Codes**")
+            case_icd = icd_df[icd_df["case_id"].astype(str) == case_id].copy()
+            if not case_icd.empty:
+                case_icd = case_icd.drop(columns=["case_id"], errors="ignore")
+                st.dataframe(case_icd, use_container_width=True, hide_index=True)
+            else:
+                st.warning("No diagnosis data available for this case.")
 
 st.markdown("---")
 
