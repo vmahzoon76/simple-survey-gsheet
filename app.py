@@ -721,6 +721,7 @@ avi_round2 = _read_ws_df(st.secrets["gsheet_id"], "avi_round2")
 baseline_df = _read_ws_df(st.secrets["gsheet_id"], "baseline")
 proc_df = _read_ws_df(st.secrets["gsheet_id"], "proc")
 icd_df = _read_ws_df(st.secrets["gsheet_id"], "icd")
+iv_intake_df = _read_ws_df(st.secrets["gsheet_id"], "iv_intake")
 
 # Parse all relevant times
 for _c in ["admittime", "dischtime", "edregtime", "edouttime", "intime", "outtime"]:
@@ -735,6 +736,10 @@ if "timestamp" in labs.columns:
 for _c in ["starttime", "endtime"]:
     if _c in inputs.columns:
         inputs[_c] = pd.to_datetime(inputs[_c], errors="coerce")
+
+for _c in ["day_start", "day_end"]:
+    if _c in iv_intake_df.columns:
+        iv_intake_df[_c] = pd.to_datetime(iv_intake_df[_c], errors="coerce")
 
 if admissions.empty:
     st.error("Admissions sheet is empty. Add rows to 'admissions' with: case_id,title,discharge_summary,weight_kg")
@@ -1061,8 +1066,9 @@ with right:
             "Potassium",
             "BUN",
             "Lasix",
-            "Procedures",  # new
-            "Diagnoses"  # new
+            "IV Intake",  # new
+            "Procedures",
+            "Diagnoses"
         ])
 
 
@@ -1247,8 +1253,55 @@ with right:
             else:
                 st.warning("No Lasix administration data available.")
 
-        # Tab 6: Procedures
+        # Tab 6: IV Intake
         with tabs[6]:
+            st.markdown("**Daily IV Fluid Intake (mL)**")
+            case_iv = iv_intake_df[iv_intake_df["case_id"].astype(str) == case_id].copy()
+
+            if not case_iv.empty and pd.notna(admit_ts):
+                # Compute hours since admission for start and end
+                case_iv["start_hours"] = (case_iv["day_start"] - admit_ts).dt.total_seconds() / 3600.0
+                case_iv["end_hours"] = (case_iv["day_end"] - admit_ts).dt.total_seconds() / 3600.0
+                case_iv["intake_ml"] = pd.to_numeric(case_iv["intake_ml"], errors="coerce")
+                case_iv = case_iv.dropna(subset=["start_hours", "end_hours", "intake_ml"])
+
+                if case_iv.empty:
+                    st.warning("IV intake data found but values are invalid.")
+                else:
+                    # Label each bar with its time range for tooltip
+                    case_iv["period"] = (
+                            case_iv["start_hours"].round(1).astype(str) + "h – " +
+                            case_iv["end_hours"].round(1).astype(str) + "h"
+                    )
+
+                    chart = alt.Chart(case_iv).mark_bar(color="#3b82f6", opacity=0.85).encode(
+                        x=alt.X("start_hours:Q",
+                                title="Hours since admission",
+                                scale=alt.Scale(domain=[0, max_tick]),
+                                axis=alt.Axis(values=tick_vals)),
+                        x2="end_hours:Q",
+                        y=alt.Y("intake_ml:Q",
+                                title="IV Intake (mL)",
+                                scale=alt.Scale(zero=True)),
+                        tooltip=[
+                            alt.Tooltip("period:N", title="Period"),
+                            alt.Tooltip("intake_ml:Q", title="Intake (mL)", format=".0f"),
+                        ]
+                    ).properties(height=300)
+
+                    if not intervals_df.empty:
+                        final = alt.layer(chart, make_shade(max_tick)).resolve_scale(color="independent")
+                    else:
+                        final = chart
+                    st.altair_chart(final, use_container_width=True)
+
+                    total = case_iv["intake_ml"].sum()
+                    st.caption(f"Total IV intake: {total:,.0f} mL across {len(case_iv)} period(s)")
+            else:
+                st.warning("No IV intake data available for this case.")
+
+        # Tab 6: Procedures
+        with tabs[7]:
             st.markdown("**Procedures**")
             case_proc = proc_df[proc_df["case_id"].astype(str) == case_id].copy()
             if not case_proc.empty:
@@ -1258,7 +1311,7 @@ with right:
                 st.warning("No procedure data available for this case.")
 
         # Tab 7: Diagnoses
-        with tabs[7]:
+        with tabs[8]:
             st.markdown("**Diagnosis Codes**")
             case_icd = icd_df[icd_df["case_id"].astype(str) == case_id].copy()
             if not case_icd.empty:
