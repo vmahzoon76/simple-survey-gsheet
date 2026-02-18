@@ -635,14 +635,14 @@ if not st.session_state.entered:
     st.markdown(
         """
         ## Annotation Task for AKI diagnosis
-    
+
         ### Goal
         Read a discharge summary and conclude:
         1. Did the note writer think the patient had AKI?  
         2. Do *you* think the patient had AKI?  
         3. Briefly justify your answers.  
         4. Highlight the supporting text.
-    
+
         ### How to Decide
         Count any **acute worsening of kidney function during this admission** as AKI — including:
         * acute renal failure (ARF)  
@@ -650,16 +650,16 @@ if not st.session_state.entered:
         * acute on chronic  
         * acute tubular necrosis (ATN)  
         * acute renal insufficiency  
-    
+
         ### Do Not Count
         • Chronic kidney disease (CKD) or ESRD alone  
         • Past AKI from previous admissions  
         • Statements clearly ruling out AKI (e.g., "no AKI," "renal function stable")  
-    
+
         ### Remember
         • Sometimes the note writer's belief and *your* belief may differ.  
         • Focus only on **this admission**.
-    
+
         ### Contact
         If you encounter technical issues or questions:  
         **Vahid Mahzoon** — tun53200@temple.edu
@@ -851,21 +851,38 @@ with left:
 
     # ---- ADD THIS BLOCK ----
     # Show prior labels for this case from avi_round2
+    # ---- UPDATED BLOCK ----
     if not avi_round2.empty and "case_id" in avi_round2.columns:
         case_label = avi_round2[avi_round2["case_id"].astype(str) == case_id]
         if not case_label.empty:
             row = case_label.iloc[0]
+            rid = st.session_state.reviewer_id  # e.g. "avig13", "ojeniys", "Sheetal"
+
+            # Map reviewer_id to column suffixes
+            reviewer_col_map = {
+                "avig13": ("aki_avig13", "extracted_highlights_avig13", "rationale_aki_avig13"),
+                "ojeniys": ("aki_ojeniys", "extracted_highlights_ojeniys", "rationale_aki_ojeniys"),
+                "Sheetal": ("aki_Sheetal", "extracted_highlights_Sheetal", "rationale_aki_Sheetal"),
+            }
+
             st.markdown("### Prior Annotation")
             with st.container(border=True):
-                st.markdown(f"**AKI:** {row.get('aki_avig13', '')}")
-                st.markdown(f"**Extracted Highlights:** {row.get('extracted_highlights_avig13', '')}")
-                st.markdown(f"**Rationale:** {row.get('rationale_aki_avig13', '')}")
+                if rid in reviewer_col_map:
+                    aki_col, hl_col, rat_col = reviewer_col_map[rid]
+                    st.markdown(f"**Your prior AKI label:** {row.get(aki_col, '')}")
+                    st.markdown(f"**Your highlights:** {row.get(hl_col, '')}")
+                    st.markdown(f"**Your rationale:** {row.get(rat_col, '')}")
+                else:
+                    # Unknown reviewer — show nothing or a neutral message
+                    st.info("No prior annotation found for your reviewer ID.")
 
+                # Adjudication is visible to everyone (it's the resolved ground truth)
                 adj_rationale = row.get('rationale_aki_Adjudication', '')
                 if adj_rationale and str(adj_rationale).strip() not in ('', 'nan', 'None'):
                     st.markdown("---")
                     st.markdown(f"**Adjudicated AKI:** {row.get('aki_Adjudication', '')}")
                     st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
+    # ---- END UPDATED BLOCK ----
     # ---- END BLOCK ----
 
 with right:
