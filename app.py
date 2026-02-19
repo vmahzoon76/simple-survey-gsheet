@@ -1039,7 +1039,7 @@ with right:
             layers.append(bl_text)
 
         if not intervals_df.empty:
-            shade = alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
+            shade = alt.Chart(intervals_df).mark_rect(opacity=0.4).encode(
                 x=alt.X("start:Q", scale=alt.Scale(domain=[x_start, max_tick])),
                 x2="end:Q",
                 color=alt.Color("label:N",
@@ -1075,7 +1075,7 @@ with right:
         # Helper: build shade layer
         # make_shade helper — update the color scale:
         def make_shade(domain_max):
-            return alt.Chart(intervals_df).mark_rect(opacity=0.15).encode(
+            return alt.Chart(intervals_df).mark_rect(opacity=0.4).encode(
                 x=alt.X("start:Q", scale=alt.Scale(domain=[0, domain_max])),
                 x2="end:Q",
                 color=alt.Color("label:N",
