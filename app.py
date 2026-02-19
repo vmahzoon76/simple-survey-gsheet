@@ -881,7 +881,6 @@ with left:
 
                     st.markdown(f"**Your prior AKI label (note writer opinion):** {row.get(aki_col, '')}")
                     st.markdown(f"**Rationale:** {row.get(rat_col, '')}")
-                    st.markdown("---")
                     st.markdown(f"**Your prior AKI label (personal opinion):** {row.get(aki_own_col, '')}")
                     st.markdown(f"**Rationale:** {row.get(rat_own_col, '')}")
                     st.markdown(f"**Extracted Highlights:** {row.get(hl_col, '')}")
