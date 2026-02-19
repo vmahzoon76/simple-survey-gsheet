@@ -1063,7 +1063,7 @@ with right:
     st.markdown("---")
 
     # ======== OPTIONAL: Additional Lab Values, Lasix, IV fluid and ICD codes ========
-    with st.expander("**📊 Additional Lab Values**", expanded=False):
+    with st.expander("**📊 Additional Lab Values, Lasix, IV fluid and ICD codes**", expanded=False):
         tabs = st.tabs([
             "Urine Output",
             "Blood Pressure",
