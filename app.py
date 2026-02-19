@@ -884,10 +884,8 @@ with left:
                     st.markdown("---")
                     st.markdown(f"**Your prior AKI label (personal opinion):** {row.get(aki_own_col, '')}")
                     st.markdown(f"**Rationale:** {row.get(rat_own_col, '')}")
-                    st.markdown("---")
                     st.markdown(f"**Extracted Highlights:** {row.get(hl_col, '')}")
-                    st.markdown("---")
-                    st.markdown(f"**Sufficient data to decide about AKI:** {row.get(surprise_col, '')}")
+                    st.markdown(f"**Surprise if patient had AKI:** {row.get(surprise_col, '')}")
                 else:
                     st.info("No prior annotation found for your reviewer ID.")
 
@@ -896,7 +894,7 @@ with left:
                 adj_rationale = row.get('rationale_aki_Adjudication', '')
                 if str(adj_aki).strip() not in ('', 'nan', 'None'):
                     st.markdown("---")
-                    st.markdown(f"**Adjudicated AKI:** {adj_aki}")
+                    st.markdown(f"**Adjudicated AKI Label (note writer opinion):** {adj_aki}")
                     if str(adj_rationale).strip() not in ('', 'nan', 'None'):
                         st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
 
