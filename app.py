@@ -898,7 +898,7 @@ with left:
                         st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
 
 with right:
-    st.markdown("## Lab Values & Vitals")
+    st.markdown("## Lab Values, Vitals, and ICD Codes")
 
     # Get patient blurb
     blurb = make_patient_blurb(age, gender, weight)
