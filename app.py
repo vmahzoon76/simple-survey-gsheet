@@ -1360,6 +1360,17 @@ if st.session_state.step == 1:
             height=140, key=f"q1_rationale_{case_id}"
         )
 
+        q_surprise = st.radio(
+            "Do you believe that you had sufficient data to confidently decide about AKI?",
+            [
+                "Yes",
+                "No"
+            ],
+            horizontal=False,
+            index=None,
+            key=f"q1_surprise_{case_id}"
+        )
+
         # If YES → show extra AKI-related questions
 
         submitted1 = st.form_submit_button("Save ✅", disabled=st.session_state.get("saving1", False))
@@ -1380,13 +1391,13 @@ if st.session_state.step == 1:
                 "case_id": case_id,
                 "step": 1,
                 # "aki": q_aki,
-                # "highlight_html": hl_html,
+                "highlight_html": hl_html,
                 # "rationale_aki": q_rationale_writer,
                 # "aki_etiology": "; ".join(aki_et),
                 "aki_own": q_aki_own,
                 "rational_aki_own": q_rationale,
                 # "aki_onset": q_onset,
-                # "aki_surprise":q_surprise,
+                "aki_surprise":q_surprise,
                 # "treat_aki":q_treated
 
             }
