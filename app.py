@@ -863,34 +863,42 @@ with left:
         case_label = avi_round2[avi_round2["case_id"].astype(str) == case_id]
         if not case_label.empty:
             row = case_label.iloc[0]
-            rid = st.session_state.reviewer_id  # e.g. "avig13", "ojeniys", "Sheetal"
+            rid = st.session_state.reviewer_id
 
-            # Map reviewer_id to column suffixes
             reviewer_col_map = {
-                "avig13": ("aki_avig13", "extracted_highlights_avig13", "rationale_aki_avig13"),
-                "ojeniys": ("aki_ojeniys", "extracted_highlights_ojeniys", "rationale_aki_ojeniys"),
-                "Sheetal": ("aki_Sheetal", "extracted_highlights_Sheetal", "rationale_aki_Sheetal"),
+                "avig13": ("aki_avig13", "rationale_aki_avig13", "aki_own_avig13", "rational_aki_own_avig13",
+                           "extracted_highlights_avig13", "aki_surprise_avig13"),
+                "ojeniys": ("aki_ojeniys", "rationale_aki_ojeniys", "aki_own_ojeniys", "rational_aki_own_ojeniys",
+                            "extracted_highlights_ojeniys", "aki_surprise_ojeniys"),
+                "Sheetal": ("aki_Sheetal", "rationale_aki_Sheetal", "aki_own_Sheetal", "rational_aki_own_Sheetal",
+                            "extracted_highlights_Sheetal", "aki_surprise_Sheetal"),
             }
 
             st.markdown("### Prior Annotation")
             with st.container(border=True):
                 if rid in reviewer_col_map:
-                    aki_col, hl_col, rat_col = reviewer_col_map[rid]
-                    st.markdown(f"**Your prior AKI label:** {row.get(aki_col, '')}")
-                    st.markdown(f"**Your highlights:** {row.get(hl_col, '')}")
-                    st.markdown(f"**Your rationale:** {row.get(rat_col, '')}")
+                    aki_col, rat_col, aki_own_col, rat_own_col, hl_col, surprise_col = reviewer_col_map[rid]
+
+                    st.markdown(f"**Your prior AKI label (note writer opinion):** {row.get(aki_col, '')}")
+                    st.markdown(f"**Rationale:** {row.get(rat_col, '')}")
+                    st.markdown("---")
+                    st.markdown(f"**Your prior AKI label (personal opinion):** {row.get(aki_own_col, '')}")
+                    st.markdown(f"**Rationale:** {row.get(rat_own_col, '')}")
+                    st.markdown("---")
+                    st.markdown(f"**Extracted Highlights:** {row.get(hl_col, '')}")
+                    st.markdown("---")
+                    st.markdown(f"**Sufficient data to decide about AKI:** {row.get(surprise_col, '')}")
                 else:
-                    # Unknown reviewer — show nothing or a neutral message
                     st.info("No prior annotation found for your reviewer ID.")
 
-                # Adjudication is visible to everyone (it's the resolved ground truth)
+                # Adjudication — show even if no rationale
+                adj_aki = row.get('aki_Adjudication', '')
                 adj_rationale = row.get('rationale_aki_Adjudication', '')
-                if adj_rationale and str(adj_rationale).strip() not in ('', 'nan', 'None'):
+                if str(adj_aki).strip() not in ('', 'nan', 'None'):
                     st.markdown("---")
-                    st.markdown(f"**Adjudicated AKI:** {row.get('aki_Adjudication', '')}")
-                    st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
-    # ---- END UPDATED BLOCK ----
-    # ---- END BLOCK ----
+                    st.markdown(f"**Adjudicated AKI:** {adj_aki}")
+                    if str(adj_rationale).strip() not in ('', 'nan', 'None'):
+                        st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
 
 with right:
     st.markdown("## Lab Values & Vitals")
