@@ -880,13 +880,18 @@ with left:
             with st.container(border=True):
                 if rid in reviewer_col_map:
                     aki_col, rat_col, aki_own_col, rat_own_col, hl_col, surprise_col = reviewer_col_map[rid]
-
-                    st.markdown(f"**Your prior AKI label (note writer opinion):** {row.get(aki_col, '')}")
-                    st.markdown(f"**Rationale:** {row.get(rat_col, '')}")
-                    st.markdown(f"**Your prior AKI label (personal opinion):** {row.get(aki_own_col, '')}")
-                    st.markdown(f"**Rationale:** {row.get(rat_own_col, '')}")
-                    st.markdown(f"**Extracted Highlights:** {row.get(hl_col, '')}")
-                    st.markdown(f"**Surprise if patient had AKI:** {row.get(surprise_col, '')}")
+                
+                    def _show(label, col):
+                        val = str(row.get(col, '')).strip()
+                        if val and val.lower() not in ('nan', 'none', ''):
+                            st.markdown(f"**{label}:** {val}")
+                
+                    _show("Your prior AKI label (note writer opinion)", aki_col)
+                    _show("Rationale", rat_col)
+                    _show("Your prior AKI label (personal opinion)", aki_own_col)
+                    _show("Rationale", rat_own_col)
+                    _show("Extracted Highlights", hl_col)
+                    _show("Surprise if patient had AKI", surprise_col)
                 else:
                     st.info("No prior annotation found for your reviewer ID.")
 
