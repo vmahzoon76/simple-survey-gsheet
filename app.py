@@ -872,6 +872,8 @@ with left:
                             "extracted_highlights_ojeniys", "aki_surprise_ojeniys"),
                 "Sheetal": ("aki_Sheetal", "rationale_aki_Sheetal", "aki_own_Sheetal", "rational_aki_own_Sheetal",
                             "extracted_highlights_Sheetal", "aki_surprise_Sheetal"),
+                "toby efferen": ("aki_toby efferen", "rationale_aki_toby efferen", "aki_own_toby efferen", "rational_aki_own_toby efferen",
+                            "extracted_highlights_toby efferen", "aki_surprise_toby efferen"),
             }
 
             st.markdown("### Prior Annotation")
