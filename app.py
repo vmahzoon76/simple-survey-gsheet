@@ -896,13 +896,14 @@ with left:
                     st.info("No prior annotation found for your reviewer ID.")
 
                 # Adjudication — show even if no rationale
-                adj_aki = row.get('aki_Adjudication', '')
-                adj_rationale = row.get('rationale_aki_Adjudication', '')
-                if str(adj_aki).strip() not in ('', 'nan', 'None'):
-                    st.markdown("---")
-                    st.markdown(f"**Adjudicated AKI Label (note writer opinion):** {adj_aki}")
-                    if str(adj_rationale).strip() not in ('', 'nan', 'None'):
-                        st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
+                if rid != "toby efferen":
+                    adj_aki = row.get('aki_Adjudication', '')
+                    adj_rationale = row.get('rationale_aki_Adjudication', '')
+                    if str(adj_aki).strip() not in ('', 'nan', 'None'):
+                        st.markdown("---")
+                        st.markdown(f"**Adjudicated AKI Label (note writer opinion):** {adj_aki}")
+                        if str(adj_rationale).strip() not in ('', 'nan', 'None'):
+                            st.markdown(f"**Rationale for Adjudicated AKI:** {adj_rationale}")
 
 with right:
     st.markdown("## Lab Values, Vitals, and ICD Codes")
