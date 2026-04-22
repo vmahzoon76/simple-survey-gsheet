@@ -846,6 +846,26 @@ st.caption(
 )
 st.markdown(f"### {case_id} — {title}")
 
+# Keep the sidebar jump menu synchronized with the current case.
+case_options = admissions["case_id"].astype(str).tolist()
+if st.session_state.get("jump_case_id") != case_id:
+    st.session_state.jump_case_id = case_id
+
+with st.sidebar:
+    st.divider()
+    selected_case_id = st.selectbox(
+        "Jump to example",
+        options=case_options,
+        key="jump_case_id",
+    )
+    if selected_case_id != case_id:
+        st.session_state.case_idx = case_options.index(selected_case_id)
+        st.session_state.step = 1
+        st.session_state.jump_to_top = True
+        _scroll_top()
+        time.sleep(0.18)
+        _rerun()
+
 # ================== Layout ==================
 left, right = st.columns([1, 1], gap="large")
 
